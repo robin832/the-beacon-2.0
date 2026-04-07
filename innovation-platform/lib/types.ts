@@ -1,0 +1,128 @@
+export interface Session {
+  id: string;
+  referrer: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  device_type: string | null;
+  country: string | null;
+  started_at: string;
+  last_activity_at: string | null;
+}
+
+export interface Analysis {
+  id: string;
+  company_name: string;
+  company_website: string | null;
+  industry: string | null;
+  company_type: string | null;
+  overall_score: number | null;
+  maturity_level: string | null;
+  technologies_detected: string[];
+  strategic_goals: StrategicGoal[];
+  active_projects: ActiveProject[];
+  innovation_gaps: string[];
+  pain_points_detected: string[];
+  beacon_relevance: string | null;
+  recommended_offerings: RecommendedOffering[];
+  industry_context: string | null;
+  data_confidence: string | null;
+  analysis_status: string;
+  full_analysis_json: Record<string, unknown> | null;
+  account_id: string | null;
+  session_id: string | null;
+  previous_analysis_id: string | null;
+  confirmed_verticals: string[];
+  analyzed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MaturityDimension {
+  id: string;
+  analysis_id: string;
+  dimension_name: string;
+  score: number | null;
+  weight: number | null;
+  evidence: string | null;
+  key_findings: string[];
+  sub_scores: Record<string, number>;
+  created_at: string;
+}
+
+export interface EcosystemMatch {
+  id: string;
+  analysis_id: string;
+  matched_account_id: string;
+  match_rank: number;
+  match_score: number | null;
+  match_rationale: string | null;
+  match_category: string | null;
+  shared_themes: string[];
+  collaboration_idea: string | null;
+  is_visible: boolean;
+  unlocked_at: string | null;
+  created_at: string;
+  // Joined from accounts
+  account_name?: string;
+  account_description?: string;
+  account_industry?: string;
+  account_technologies?: string[];
+}
+
+export interface Interaction {
+  id?: string;
+  session_id: string;
+  event_type: string;
+  page: string | null;
+  metadata: Record<string, unknown> | null;
+  timestamp?: string;
+}
+
+export interface Lead {
+  id?: string;
+  analysis_id: string;
+  session_id: string | null;
+  name: string | null;
+  email: string | null;
+  company_name: string | null;
+  phone: string | null;
+  message: string | null;
+  lead_type: string;
+  rating: number | null;
+  calendly_booked: boolean;
+  contact_id: string | null;
+  deal_id: string | null;
+  status: string;
+  created_at?: string;
+}
+
+export interface StrategicGoal {
+  goal: string;
+  relevance: string;
+}
+
+export interface ActiveProject {
+  name: string;
+  status: string;
+  description: string;
+}
+
+export interface RecommendedOffering {
+  offering: string;
+  price: string;
+  match_reason: string;
+}
+
+export interface CompanyCandidate {
+  name: string;
+  website: string | null;
+  headquarters: string | null;
+  industry: string | null;
+  description: string | null;
+  confidence: number;
+}
+
+export interface CompanyLookupResponse {
+  candidates: CompanyCandidate[];
+}
