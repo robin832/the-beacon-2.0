@@ -9,19 +9,17 @@ export default function IndustryContext({ context, industry }: IndustryContextPr
   if (!context) return null;
 
   return (
-    <section className="bg-white py-20 px-6">
+    <section className="bg-beacon-light-gray py-20 px-6">
       <div className="max-w-3xl mx-auto">
         <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-beacon-dark-teal mb-4">
-          Industry Context
+          What&apos;s Transforming {industry || 'Your Industry'} Right Now
         </h2>
-        {industry && (
-          <p className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-8">
-            {industry}
-          </p>
-        )}
+        <p className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-8">
+          Industry landscape
+        </p>
         <div className="prose prose-lg max-w-none text-beacon-dark-teal/80 leading-relaxed">
           {context.split('\n').map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
+            paragraph.trim() ? <p key={i}>{paragraph}</p> : null
           ))}
         </div>
       </div>

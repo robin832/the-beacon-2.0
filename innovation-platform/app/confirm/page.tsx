@@ -10,13 +10,15 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import PageTransition from '@/components/ui/PageTransition';
 import { CompanyCandidate } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
+import { getSessionId } from '@/lib/session';
 
 export default function ConfirmPage() {
   const router = useRouter();
   const [candidates, setCandidates] = useState<CompanyCandidate[]>([]);
   const [selected, setSelected] = useState(0);
   const [pageLoading, setPageLoading] = useState(true);
-  const [navigating, setNavigating] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [originalInput, setOriginalInput] = useState('');
 
   useEffect(() => {
@@ -32,13 +34,52 @@ export default function ConfirmPage() {
     setTimeout(() => setPageLoading(false), 400);
   }, [router]);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const company = candidates[selected];
     if (!company) return;
-    setNavigating(true);
-    // Store confirmed company — verticals page will use this
-    sessionStorage.setItem('confirmed_company', JSON.stringify(company));
-    router.push('/verticals');
+    setStarting(true);
+
+    try {
+      const sessionId = getSessionId();
+
+      // Use AI-suggested verticals if available
+      const verticals = company.suggested_verticals || [];
+
+      // Create analysis record and trigger analysis directly
+      const { data: analysis, error: insertError } = await supabase
+        .from('analyses')
+        .insert({
+          company_name: company.name,
+          company_website: company.website,
+          industry: company.industry,
+          analysis_status: 'pending',
+          session_id: sessionId,
+          confirmed_verticals: verticals,
+        })
+        .select('id')
+        .single();
+
+      if (insertError) throw insertError;
+
+      sessionStorage.setItem('analysis_id', analysis.id);
+
+      // Fire-and-forget analysis
+      supabase.functions.invoke('innovation-analysis', {
+        body: {
+          analysis_id: analysis.id,
+          company_name: company.name,
+          company_website: company.website,
+          industry: company.industry,
+          confirmed_verticals: verticals,
+          session_id: sessionId,
+        },
+      });
+
+      router.push('/analyzing');
+    } catch (err) {
+      console.error('Failed to start analysis:', err);
+      setStarting(false);
+    }
   };
 
   const handleTryAgain = () => {
@@ -48,8 +89,8 @@ export default function ConfirmPage() {
   if (pageLoading) {
     return <PageTransition message="Company identified" submessage="Preparing your results..." />;
   }
-  if (navigating) {
-    return <PageTransition message="Great!" submessage="Let\u2019s refine your innovation profile..." />;
+  if (starting) {
+    return <PageTransition message="Starting analysis" submessage="Our AI is getting ready to research your company..." />;
   }
   if (candidates.length === 0) {
     return <PageTransition message="Loading" submessage="Fetching company details..." />;
@@ -63,7 +104,7 @@ export default function ConfirmPage() {
       <main className="flex-1 relative overflow-hidden pt-28 pb-20 px-6">
         <DecorativeBackground />
         <div className="max-w-2xl mx-auto relative z-10" style={{ animation: 'fadeInUp 0.6s ease-out' }}>
-          <Badge variant="cyan" className="mb-6">🔍 Company Identified</Badge>
+          <Badge variant="cyan" className="mb-6">Company Identified</Badge>
 
           <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-beacon-dark-teal mb-8">
             {primary.name}
@@ -135,7 +176,7 @@ export default function ConfirmPage() {
 
           <div className="flex flex-col sm:flex-row gap-4">
             <Button variant="primary" size="large" onClick={handleConfirm}>
-              Yes, That&apos;s Us →
+              Yes, That&apos;s Us — Start Analysis →
             </Button>
             <Button variant="outline" onClick={handleTryAgain}>
               No, Try Again

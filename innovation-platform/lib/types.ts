@@ -27,6 +27,8 @@ export interface Analysis {
   recommended_offerings: RecommendedOffering[];
   industry_context: string | null;
   data_confidence: string | null;
+  surprising_insight: string | null;
+  quick_win: QuickWin | null;
   analysis_status: string;
   full_analysis_json: Record<string, unknown> | null;
   account_id: string | null;
@@ -124,6 +126,12 @@ export interface RecommendedOffering {
   offering: string;
   price?: string;
   match_reason: string;
+}
+
+export interface QuickWin {
+  action: string;
+  why: string;
+  beacon_connection: string;
 }
 
 export interface CompanyCandidate {

@@ -9,9 +9,8 @@ import Card from '@/components/ui/Card';
 import PageTransition from '@/components/ui/PageTransition';
 import { supabase } from '@/lib/supabase';
 import { trackEvent } from '@/lib/tracking';
-import { Analysis, EcosystemMatch, MaturityDimension } from '@/lib/types';
+import { Analysis, EcosystemMatch } from '@/lib/types';
 import TechTag from '@/components/ui/TechTag';
-import { generateReportPDF } from '@/components/report/PDFReport';
 
 const facilityImages = [
   { src: '/facilities/building.jpg', alt: 'The Beacon building', label: 'The Beacon' },
@@ -26,21 +25,17 @@ export default function TryoutPage() {
 
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [matches, setMatches] = useState<EcosystemMatch[]>([]);
-  const [dimensions, setDimensions] = useState<MaturityDimension[]>([]);
   const [loading, setLoading] = useState(true);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [analysisRes, matchesRes, dimRes] = await Promise.all([
+      const [analysisRes, matchesRes] = await Promise.all([
         supabase.from('analyses').select('*').eq('id', analysisId).single(),
         supabase.from('ecosystem_matches').select('*').eq('analysis_id', analysisId).order('match_rank', { ascending: true }),
-        supabase.from('maturity_dimensions').select('*').eq('analysis_id', analysisId).order('weight', { ascending: false }),
       ]);
       if (analysisRes.data) setAnalysis(analysisRes.data as Analysis);
       if (matchesRes.data) setMatches(matchesRes.data as EcosystemMatch[]);
-      if (dimRes.data) setDimensions(dimRes.data as MaturityDimension[]);
       setLoading(false);
     }
     load();
@@ -97,37 +92,10 @@ export default function TryoutPage() {
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-beacon-dark-teal mb-4">
               Your Free Tryout at The Beacon
             </h1>
-            <p className="text-beacon-medium-gray mb-6 max-w-2xl">
+            <p className="text-beacon-medium-gray mb-12 max-w-2xl">
               Based on your innovation profile, we&apos;ve prepared three exclusive
               experiences for {analysis.company_name}.
             </p>
-
-            {/* PDF Download */}
-            <button
-              onClick={async () => {
-                setGeneratingPdf(true);
-                trackEvent('pdf_download', '/tryout', { analysis_id: analysisId });
-                try {
-                  const blob = await generateReportPDF(analysis, dimensions);
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${analysis.company_name.replace(/[^a-zA-Z0-9]/g, '_')}_Innovation_Report.pdf`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                } catch (err) {
-                  console.error('PDF generation failed:', err);
-                }
-                setGeneratingPdf(false);
-              }}
-              disabled={generatingPdf}
-              className="inline-flex items-center gap-2 mb-12 px-5 py-2.5 border-2 border-beacon-border rounded text-sm font-medium text-beacon-dark-teal hover:border-beacon-dark-teal transition-all duration-200 disabled:opacity-50"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              {generatingPdf ? 'Generating PDF...' : 'Download Full Report (PDF)'}
-            </button>
 
             {/* Tryout 1: Ecosystem Matches — 3-per-row cards */}
             <div className="mb-12">
@@ -270,21 +238,39 @@ export default function TryoutPage() {
             </div>
 
             {/* Book a Visit CTA */}
-            <div className="bg-beacon-dark-teal rounded-lg p-8 sm:p-12 text-center">
-              <img src="/logo-white.svg" alt="The Beacon" className="h-6 mx-auto mb-6 opacity-30" />
-              <h3 className="text-2xl font-bold text-white mb-3">Ready to experience The Beacon?</h3>
-              <p className="text-white/60 mb-8 max-w-lg mx-auto">
-                Book a visit and we&apos;ll arrange everything — your coworking day,
-                meeting room, introductions to matched companies, and event access.
-              </p>
-              <a
-                href="https://calendly.com/robinpauwels/meeting-30"
-                target="_blank" rel="noopener noreferrer"
-                onClick={() => trackEvent('book_visit_click', '/tryout', { analysis_id: analysisId })}
-                className="inline-flex items-center justify-center h-14 px-10 bg-beacon-orange hover:bg-beacon-orange-hover text-white uppercase tracking-widest font-medium rounded transition-all duration-300 text-sm"
-              >
-                Book Your Visit →
-              </a>
+            <div className="bg-beacon-dark-teal rounded-lg p-8 sm:p-12">
+              <div className="flex flex-col sm:flex-row items-center gap-8">
+                {/* Robin's photo */}
+                <div className="flex-shrink-0">
+                  <img
+                    src="/robin.jpg"
+                    alt="Robin Pauwels"
+                    className="w-28 h-28 rounded-full object-cover border-4 border-white/10"
+                  />
+                </div>
+
+                <div className="text-center sm:text-left">
+                  <h3 className="text-2xl font-bold text-white mb-1">
+                    Ready to experience The Beacon?
+                  </h3>
+                  <p className="text-white/40 text-sm font-mono mb-4">
+                    Robin Pauwels — Community Manager
+                  </p>
+                  <p className="text-white/60 mb-6 max-w-lg">
+                    I&apos;d love to show you around. Book a visit and I&apos;ll personally
+                    arrange your full tryout — coworking day, meeting room, introductions
+                    to your matched companies, and event access.
+                  </p>
+                  <a
+                    href="https://calendly.com/robinpauwels/meeting-30"
+                    target="_blank" rel="noopener noreferrer"
+                    onClick={() => trackEvent('book_visit_click', '/tryout', { analysis_id: analysisId })}
+                    className="inline-flex items-center justify-center h-14 px-10 bg-beacon-orange hover:bg-beacon-orange-hover text-white uppercase tracking-widest font-medium rounded transition-all duration-300 text-sm"
+                  >
+                    Book a Visit with Robin →
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
