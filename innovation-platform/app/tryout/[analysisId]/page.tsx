@@ -161,34 +161,52 @@ export default function TryoutPage() {
 
             {/* Tryout 2: Day at The Beacon */}
             <div className="mb-8">
-              <Card className="p-8">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-full bg-beacon-orange/10 flex items-center justify-center flex-shrink-0">
-                    <span className="text-2xl">🏢</span>
+              <Card className="overflow-hidden">
+                {/* Photo gallery */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-0.5">
+                  <div className="aspect-[4/3] relative overflow-hidden">
+                    <img src="/facilities/building.jpg" alt="The Beacon building" className="w-full h-full object-cover" />
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-beacon-dark-teal">
-                      A Day at The Beacon
-                    </h3>
-                    <p className="text-sm text-beacon-medium-gray mt-1 mb-4">
-                      Experience our innovation hub firsthand
-                    </p>
-                    <div className="space-y-2 text-sm text-beacon-dark-teal/70 leading-relaxed">
-                      <div className="flex items-start gap-2">
-                        <span className="text-beacon-cyan">✓</span>
-                        <span>Full-day access to our coworking space in the heart of Antwerp&apos;s innovation district</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-beacon-cyan">✓</span>
-                        <span>Private meeting room for your team (up to 8 people)</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-beacon-cyan">✓</span>
-                        <span>Guided tour of The Beacon and introduction to the community</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-beacon-cyan">✓</span>
-                        <span>1-on-1 innovation consultation based on your maturity report</span>
+                  <div className="aspect-[4/3] relative overflow-hidden">
+                    <img src="/facilities/coworking.jpg" alt="Coworking space" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="aspect-[4/3] relative overflow-hidden">
+                    <img src="/facilities/boardroom.jpg" alt="Boardroom" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="aspect-[4/3] relative overflow-hidden">
+                    <img src="/facilities/terrace.jpeg" alt="Rooftop terrace" className="w-full h-full object-cover" />
+                  </div>
+                </div>
+
+                <div className="p-8">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-beacon-orange/10 flex items-center justify-center flex-shrink-0">
+                      <span className="text-2xl">🏢</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-beacon-dark-teal">
+                        A Day at The Beacon
+                      </h3>
+                      <p className="text-sm text-beacon-medium-gray mt-1 mb-4">
+                        Experience our innovation hub firsthand
+                      </p>
+                      <div className="space-y-2 text-sm text-beacon-dark-teal/70 leading-relaxed">
+                        <div className="flex items-start gap-2">
+                          <span className="text-beacon-cyan">✓</span>
+                          <span>Full-day access to our coworking space in the heart of Antwerp&apos;s innovation district</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-beacon-cyan">✓</span>
+                          <span>Private meeting room for your team (up to 8 people)</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-beacon-cyan">✓</span>
+                          <span>Guided tour of The Beacon and introduction to the community</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-beacon-cyan">✓</span>
+                          <span>1-on-1 innovation consultation based on your maturity report</span>
+                        </div>
                       </div>
                     </div>
                   </div>
