@@ -41,7 +41,7 @@ export default function CompanyInput({ initialValue = '', onSearchStart }: Compa
       router.push('/confirm');
     } catch (err) {
       console.error('Company lookup failed:', err);
-      setError('Something went wrong. Please try again.');
+      setError('Something went wrong. Please wait a moment and try again.');
       setLoading(false);
     }
   };
