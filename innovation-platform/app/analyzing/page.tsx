@@ -24,7 +24,7 @@ export default function AnalyzingPage() {
     if (data) {
       setStatus(data.analysis_status);
       if (data.analysis_status === 'complete') {
-        router.push(`/verticals/${analysisId}`);
+        router.push(`/report/${analysisId}`);
       } else if (data.analysis_status === 'error') {
         setError(true);
       }
@@ -37,42 +37,14 @@ export default function AnalyzingPage() {
       return;
     }
 
-    // Poll for status changes every 3 seconds
+    // Poll every 3 seconds
     const interval = setInterval(checkStatus, 3000);
 
-    // Also try realtime subscription
-    const channel = supabase
-      .channel(`analysis-${analysisId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'innovation',
-          table: 'analyses',
-          filter: `id=eq.${analysisId}`,
-        },
-        (payload) => {
-          const newStatus = payload.new?.analysis_status;
-          if (newStatus) {
-            setStatus(newStatus);
-            if (newStatus === 'complete') {
-              router.push(`/verticals/${analysisId}`);
-            } else if (newStatus === 'error') {
-              setError(true);
-            }
-          }
-        }
-      )
-      .subscribe();
-
     // Timeout after 90 seconds
-    const timeout = setTimeout(() => {
-      setError(true);
-    }, 90000);
+    const timeout = setTimeout(() => setError(true), 90000);
 
     return () => {
       clearInterval(interval);
-      channel.unsubscribe();
       clearTimeout(timeout);
     };
   }, [analysisId, router, checkStatus]);
@@ -85,8 +57,7 @@ export default function AnalyzingPage() {
             Analysis Taking Longer Than Expected
           </h2>
           <p className="text-white/60 mb-8">
-            Our AI is working hard, but something may have gone wrong.
-            Please try again.
+            Our AI is working hard, but something may have gone wrong. Please try again.
           </p>
           <button
             onClick={() => router.push('/')}

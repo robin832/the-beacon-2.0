@@ -21,8 +21,8 @@ export interface Analysis {
   technologies_detected: string[];
   strategic_goals: StrategicGoal[];
   active_projects: ActiveProject[];
-  innovation_gaps: string[];
-  pain_points_detected: string[];
+  innovation_gaps: InnovationGap[];
+  pain_points_detected: PainPoint[];
   beacon_relevance: string | null;
   recommended_offerings: RecommendedOffering[];
   industry_context: string | null;
@@ -47,6 +47,7 @@ export interface MaturityDimension {
   evidence: string | null;
   key_findings: string[];
   sub_scores: Record<string, number>;
+  insight?: string;
   created_at: string;
 }
 
@@ -63,7 +64,6 @@ export interface EcosystemMatch {
   is_visible: boolean;
   unlocked_at: string | null;
   created_at: string;
-  // Joined from accounts
   account_name?: string;
   account_description?: string;
   account_industry?: string;
@@ -108,9 +108,20 @@ export interface ActiveProject {
   description: string;
 }
 
+export interface InnovationGap {
+  gap: string;
+  explanation: string;
+  priority: string;
+}
+
+export interface PainPoint {
+  pain_point: string;
+  explanation: string;
+}
+
 export interface RecommendedOffering {
   offering: string;
-  price: string;
+  price?: string;
   match_reason: string;
 }
 
@@ -120,9 +131,16 @@ export interface CompanyCandidate {
   headquarters: string | null;
   industry: string | null;
   description: string | null;
+  employee_range: string | null;
+  founded: number | null;
   confidence: number;
 }
 
-export interface CompanyLookupResponse {
-  candidates: CompanyCandidate[];
+export interface DimensionInsight {
+  dimension_name: string;
+  score: number;
+  weight: number;
+  evidence: string;
+  key_findings: string[];
+  insight: string;
 }

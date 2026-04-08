@@ -1,17 +1,28 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import DecorativeBackground from '@/components/layout/DecorativeBackground';
 import HeroSection from '@/components/landing/HeroSection';
 import ProcessSteps from '@/components/landing/ProcessSteps';
 import CompanyInput from '@/components/landing/CompanyInput';
+import PageTransition from '@/components/ui/PageTransition';
 
 function LandingContent() {
   const searchParams = useSearchParams();
   const prefill = searchParams.get('company') || '';
+  const [searching, setSearching] = useState(false);
+
+  if (searching) {
+    return (
+      <PageTransition
+        message="Identifying your company"
+        submessage="Our AI is searching the web for your company details..."
+      />
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-beacon-light-gray flex flex-col">
@@ -20,7 +31,7 @@ function LandingContent() {
         <DecorativeBackground />
         <HeroSection />
         <ProcessSteps />
-        <CompanyInput initialValue={prefill} />
+        <CompanyInput initialValue={prefill} onSearchStart={() => setSearching(true)} />
       </main>
       <Footer />
     </div>
@@ -30,9 +41,7 @@ function LandingContent() {
 export default function Home() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-beacon-light-gray flex items-center justify-center">
-        <p className="text-beacon-medium-gray font-mono text-sm">Loading...</p>
-      </div>
+      <PageTransition message="Loading" />
     }>
       <LandingContent />
     </Suspense>

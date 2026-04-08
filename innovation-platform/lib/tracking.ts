@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { getSessionId } from './session';
 
-export async function trackEvent(
+export function trackEvent(
   eventType: string,
   page: string,
   metadata?: Record<string, unknown>
@@ -9,7 +9,7 @@ export async function trackEvent(
   const sessionId = getSessionId();
   if (!sessionId) return;
 
-  // Fire-and-forget — don't await or block UI
+  // Fire-and-forget
   supabase
     .from('interactions')
     .insert({

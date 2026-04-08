@@ -9,9 +9,10 @@ import { supabase } from '@/lib/supabase';
 
 interface CompanyInputProps {
   initialValue?: string;
+  onSearchStart?: () => void;
 }
 
-export default function CompanyInput({ initialValue = '' }: CompanyInputProps) {
+export default function CompanyInput({ initialValue = '', onSearchStart }: CompanyInputProps) {
   const [companyName, setCompanyName] = useState(initialValue);
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,6 +25,7 @@ export default function CompanyInput({ initialValue = '' }: CompanyInputProps) {
 
     setLoading(true);
     setError(null);
+    onSearchStart?.();
 
     try {
       const sessionId = await getOrCreateSession();
@@ -34,14 +36,12 @@ export default function CompanyInput({ initialValue = '' }: CompanyInputProps) {
 
       if (fnError) throw fnError;
 
-      // Store lookup results in sessionStorage for the confirm page
       sessionStorage.setItem('company_lookup', JSON.stringify(data));
       sessionStorage.setItem('company_name_input', companyName.trim());
       router.push('/confirm');
     } catch (err) {
       console.error('Company lookup failed:', err);
       setError('Something went wrong. Please try again.');
-    } finally {
       setLoading(false);
     }
   };

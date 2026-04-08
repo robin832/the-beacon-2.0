@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
   const publicClient = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { analysis_id, company_name, company_website, industry, session_id } = await req.json();
+    const { analysis_id, company_name, company_website, industry, session_id, confirmed_verticals } = await req.json();
 
     if (!analysis_id || !company_name) {
       return new Response(
@@ -38,10 +38,15 @@ Deno.serve(async (req) => {
       .update({ analysis_status: "researching" })
       .eq("id", analysis_id);
 
+    // Build verticals context
+    const verticalsText = (confirmed_verticals && confirmed_verticals.length > 0)
+      ? `\nConfirmed Industry Verticals: ${confirmed_verticals.join(", ")}. Use these to focus your research on the right industry context and benchmarks.`
+      : "";
+
     // Call Claude with web_search for deep research
     const analysisPrompt = `You are an innovation assessment specialist for The Beacon, a technology and innovation hub in Antwerp, Belgium.
 
-Research and analyze "${company_name}"${company_website ? ` (website: ${company_website})` : ""}${industry ? `, operating in the ${industry} industry` : ""}.
+Research and analyze "${company_name}"${company_website ? ` (website: ${company_website})` : ""}${industry ? `, operating in the ${industry} industry` : ""}.${verticalsText}
 
 Use web search extensively to research:
 1. R&D activities, patent filings, technology investments
@@ -50,19 +55,20 @@ Use web search extensively to research:
 4. Partnerships, open innovation programs, accelerator involvement
 5. Market position, strategic vision, leadership on innovation topics
 
-Score each of these 5 dimensions from 0.0 to 5.0 (in 0.5 increments) based on evidence:
+Score each of these 5 dimensions from 0.0 to 5.0 (in 0.5 increments) with specific evidence:
 1. R&D & Technology Investment (weight: 0.25)
 2. Product & Service Innovation (weight: 0.25)
 3. Digital Transformation (weight: 0.20)
 4. External Partnerships & Open Innovation (weight: 0.15)
 5. Market Leadership & Strategic Vision (weight: 0.15)
 
-Maturity levels:
-- 0.0-1.0: Innovation Laggard
-- 1.1-2.0: Innovation Follower
-- 2.1-3.0: Innovation Active
-- 3.1-4.0: Innovation Leader
-- 4.1-5.0: Innovation Pioneer
+Maturity levels: 0.0-1.0 Laggard, 1.1-2.0 Follower, 2.1-3.0 Active, 3.1-4.0 Leader, 4.1-5.0 Pioneer.
+
+IMPORTANT: For every finding, be specific — name actual products, partnerships, technologies, and projects. Generic statements are not acceptable. If you can't find evidence, say so and score lower.
+
+For innovation gaps and pain points, explain WHY each matters for this specific company.
+For recommended offerings, do NOT include prices — focus entirely on WHY the offering matches their needs.
+Available Beacon offerings: Tech Membership (Starter, Accelerator, Champion), Industry Partnerships (Explore, Engage, Strategic), \u00c0 la carte (Innovation Challenge, Inspiration Session, Tech Experience, Co-creation Workshop, Innovation Day).
 
 Return ONLY a JSON object (no markdown, no code blocks):
 {
@@ -75,53 +81,56 @@ Return ONLY a JSON object (no markdown, no code blocks):
       "dimension_name": "R&D & Technology Investment",
       "score": 3.5,
       "weight": 0.25,
-      "evidence": "Brief evidence summary (2-3 sentences)",
-      "key_findings": ["Finding 1", "Finding 2"]
+      "evidence": "Detailed 2-3 sentence evidence summary with specific facts, names, numbers.",
+      "key_findings": ["Specific finding with evidence", "Another specific finding"]
     },
     {
       "dimension_name": "Product & Service Innovation",
       "score": 3.0,
       "weight": 0.25,
-      "evidence": "Brief evidence summary",
+      "evidence": "Detailed evidence summary",
       "key_findings": ["Finding 1", "Finding 2"]
     },
     {
       "dimension_name": "Digital Transformation",
       "score": 2.5,
       "weight": 0.20,
-      "evidence": "Brief evidence summary",
+      "evidence": "Detailed evidence summary",
       "key_findings": ["Finding 1"]
     },
     {
       "dimension_name": "External Partnerships & Open Innovation",
       "score": 3.0,
       "weight": 0.15,
-      "evidence": "Brief evidence summary",
+      "evidence": "Detailed evidence summary",
       "key_findings": ["Finding 1"]
     },
     {
       "dimension_name": "Market Leadership & Strategic Vision",
       "score": 3.5,
       "weight": 0.15,
-      "evidence": "Brief evidence summary",
+      "evidence": "Detailed evidence summary",
       "key_findings": ["Finding 1"]
     }
   ],
   "technologies_detected": ["IoT", "Cloud Computing", "AI/ML"],
   "strategic_goals": [
-    { "goal": "Goal description", "relevance": "Why it matters" }
+    { "goal": "Goal description", "relevance": "Why this matters for THIS company specifically" }
   ],
   "active_projects": [
     { "name": "Project name", "status": "active", "description": "Brief description" }
   ],
-  "innovation_gaps": ["Gap 1", "Gap 2"],
-  "pain_points_detected": ["Pain point 1", "Pain point 2"],
-  "beacon_relevance": "2-3 sentence narrative on why The Beacon's ecosystem is relevant to this company's innovation needs.",
-  "recommended_offerings": [
-    { "offering": "Explore Partnership", "price": "€5,000/year", "match_reason": "Why this fits" },
-    { "offering": "Innovation Challenge", "price": "€7,500", "match_reason": "Why this fits" }
+  "innovation_gaps": [
+    { "gap": "Gap name", "explanation": "Why this is a gap and what it means for the company", "priority": "high|medium|low" }
   ],
-  "industry_context": "2-3 paragraph narrative contextualizing this company's innovation maturity within their industry. Include comparative language like 'Companies in your sector typically...'",
+  "pain_points_detected": [
+    { "pain_point": "Pain point", "explanation": "Evidence for this and its impact on the company" }
+  ],
+  "beacon_relevance": "2-3 sentence narrative explaining specifically how The Beacon ecosystem addresses this company's identified gaps and goals.",
+  "recommended_offerings": [
+    { "offering": "Explore Partnership", "match_reason": "Specific explanation of why this offering directly addresses their gaps/goals" }
+  ],
+  "industry_context": "2-3 paragraph narrative contextualizing this company within their industry. Reference actual trends in their confirmed verticals. Use comparative language.",
   "data_confidence": "high|medium|low"
 }`;
 
