@@ -10,10 +10,16 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import PageTransition from '@/components/ui/PageTransition';
 import { supabase } from '@/lib/supabase';
-import { getSessionId } from '@/lib/session';
 import { trackEvent } from '@/lib/tracking';
 import { Analysis, EcosystemMatch } from '@/lib/types';
 import TechTag from '@/components/ui/TechTag';
+
+const facilityImages = [
+  { src: '/facilities/building.jpg', alt: 'The Beacon building', label: 'The Beacon' },
+  { src: '/facilities/coworking.jpg', alt: 'Coworking space', label: 'Coworking' },
+  { src: '/facilities/boardroom.jpg', alt: 'Boardroom', label: 'Boardroom' },
+  { src: '/facilities/terrace.jpeg', alt: 'Rooftop terrace', label: 'Terrace' },
+];
 
 export default function TryoutPage() {
   const params = useParams();
@@ -22,9 +28,7 @@ export default function TryoutPage() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [matches, setMatches] = useState<EcosystemMatch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [bookingForm, setBookingForm] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' });
-  const [submitted, setSubmitted] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -40,28 +44,6 @@ export default function TryoutPage() {
     trackEvent('page_view', '/tryout', { analysis_id: analysisId });
   }, [analysisId]);
 
-  const handleBookVisit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name || !form.email) return;
-
-    const sessionId = getSessionId();
-    await supabase.functions.invoke('submit-lead', {
-      body: {
-        analysis_id: analysisId,
-        session_id: sessionId,
-        name: form.name,
-        email: form.email,
-        company_name: analysis?.company_name,
-        phone: form.phone || null,
-        message: form.message || null,
-        lead_type: 'booking_request',
-        rating: null,
-      },
-    });
-    trackEvent('book_visit_click', '/tryout', { analysis_id: analysisId });
-    setSubmitted(true);
-  };
-
   if (loading || !analysis) {
     return <PageTransition message="Unlocking your tryout" submessage="Preparing your exclusive Beacon experience..." />;
   }
@@ -72,12 +54,33 @@ export default function TryoutPage() {
   return (
     <div className="relative min-h-screen bg-beacon-light-gray flex flex-col">
       <Header />
+
+      {/* Image lightbox */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setExpandedImage(null)}
+        >
+          <button
+            className="absolute top-6 right-6 text-white/60 hover:text-white text-3xl font-light"
+            onClick={() => setExpandedImage(null)}
+          >
+            &times;
+          </button>
+          <img
+            src={expandedImage}
+            alt="Facility"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg"
+          />
+        </div>
+      )}
+
       <main className="flex-1 pt-28 pb-20">
         <div className="max-w-4xl mx-auto px-6 relative">
           <DecorativeBackground />
 
           <div style={{ animation: 'fadeInUp 0.6s ease-out' }}>
-            <Badge variant="cyan" className="mb-6">🎉 Tryout Package Unlocked</Badge>
+            <Badge variant="cyan" className="mb-6">Tryout Package Unlocked</Badge>
 
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-beacon-dark-teal mb-4">
               Your Free Tryout
@@ -120,15 +123,21 @@ export default function TryoutPage() {
                           )}
                         </div>
                         <span className="text-2xl font-black text-beacon-dark-teal">
-                          {match.match_score ? `${Math.round(match.match_score * 100)}%` : '—'}
+                          {match.match_score ? `${Math.round(Number(match.match_score) * 100)}%` : '—'}
                         </span>
                       </div>
                       {match.match_rationale && (
                         <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mt-2">{match.match_rationale}</p>
                       )}
-                      {match.shared_themes.length > 0 && (
+                      {match.collaboration_idea && (
+                        <div className="mt-3 p-3 bg-beacon-light-gray rounded">
+                          <span className="text-[10px] font-mono tracking-widest uppercase text-beacon-medium-gray">Collaboration idea</span>
+                          <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mt-1">{match.collaboration_idea}</p>
+                        </div>
+                      )}
+                      {match.shared_themes && match.shared_themes.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-3">
-                          {match.shared_themes.map((t, i) => <TechTag key={i} label={t} />)}
+                          {match.shared_themes.map((t, i) => <TechTag key={i} label={String(t)} />)}
                         </div>
                       )}
                     </div>
@@ -162,24 +171,25 @@ export default function TryoutPage() {
             {/* Tryout 2: Day at The Beacon */}
             <div className="mb-8">
               <Card className="overflow-hidden">
-                {/* Photo gallery */}
+                {/* Clickable photo gallery */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-0.5">
-                  <div className="aspect-[4/3] relative overflow-hidden">
-                    <img src="/facilities/building.jpg" alt="The Beacon building" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="aspect-[4/3] relative overflow-hidden">
-                    <img src="/facilities/coworking.jpg" alt="Coworking space" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="aspect-[4/3] relative overflow-hidden">
-                    <img src="/facilities/boardroom.jpg" alt="Boardroom" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="aspect-[4/3] relative overflow-hidden">
-                    <img src="/facilities/terrace.jpeg" alt="Rooftop terrace" className="w-full h-full object-cover" />
-                  </div>
+                  {facilityImages.map((img) => (
+                    <button
+                      key={img.src}
+                      className="aspect-[4/3] relative overflow-hidden group cursor-pointer"
+                      onClick={() => setExpandedImage(img.src)}
+                    >
+                      <img src={img.src} alt={img.alt} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+                      <span className="absolute bottom-2 left-2 text-[10px] font-mono tracking-widest uppercase text-white/0 group-hover:text-white/80 transition-colors duration-300 drop-shadow-lg">
+                        {img.label}
+                      </span>
+                    </button>
+                  ))}
                 </div>
 
                 <div className="p-8">
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-4 mb-6">
                     <div className="w-12 h-12 rounded-full bg-beacon-orange/10 flex items-center justify-center flex-shrink-0">
                       <span className="text-2xl">🏢</span>
                     </div>
@@ -187,28 +197,40 @@ export default function TryoutPage() {
                       <h3 className="text-xl font-bold text-beacon-dark-teal">
                         A Day at The Beacon
                       </h3>
-                      <p className="text-sm text-beacon-medium-gray mt-1 mb-4">
+                      <p className="text-sm text-beacon-medium-gray mt-1">
                         Experience our innovation hub firsthand
                       </p>
-                      <div className="space-y-2 text-sm text-beacon-dark-teal/70 leading-relaxed">
-                        <div className="flex items-start gap-2">
-                          <span className="text-beacon-cyan">✓</span>
-                          <span>Full-day access to our coworking space in the heart of Antwerp&apos;s innovation district</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-beacon-cyan">✓</span>
-                          <span>Private meeting room for your team (up to 8 people)</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-beacon-cyan">✓</span>
-                          <span>Guided tour of The Beacon and introduction to the community</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-beacon-cyan">✓</span>
-                          <span>1-on-1 innovation consultation based on your maturity report</span>
-                        </div>
-                      </div>
                     </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm text-beacon-dark-teal/70 leading-relaxed mb-6">
+                    <div className="flex items-start gap-2">
+                      <span className="text-beacon-cyan">✓</span>
+                      <span>Full-day access to our coworking space in the heart of Antwerp&apos;s innovation district</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-beacon-cyan">✓</span>
+                      <span>Private meeting room for your team (up to 8 people)</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-beacon-cyan">✓</span>
+                      <span>Guided tour of The Beacon and introduction to the community</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-beacon-cyan">✓</span>
+                      <span>1-on-1 innovation consultation based on your maturity report</span>
+                    </div>
+                  </div>
+
+                  {/* YouTube video */}
+                  <div className="aspect-video rounded-lg overflow-hidden border-2 border-beacon-border">
+                    <iframe
+                      src="https://www.youtube.com/embed/WhnBSJz6k9I"
+                      title="The Beacon - Innovation Hub Antwerp"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="w-full h-full"
+                    />
                   </div>
                 </div>
               </Card>
@@ -241,79 +263,25 @@ export default function TryoutPage() {
               </Card>
             </div>
 
-            {/* Book a Visit CTA */}
-            <div className="bg-beacon-dark-teal rounded-lg p-8 sm:p-12">
-              {!bookingForm && !submitted && (
-                <div className="text-center">
-                  <h3 className="text-2xl font-bold text-white mb-3">
-                    Ready to experience The Beacon?
-                  </h3>
-                  <p className="text-white/60 mb-8 max-w-lg mx-auto">
-                    Book a visit and we&apos;ll arrange your full tryout package —
-                    coworking day, meeting room, event access, and introductions
-                    to your matched companies.
-                  </p>
-                  <Button variant="primary" size="large" onClick={() => setBookingForm(true)}>
-                    Book Your Visit →
-                  </Button>
-                </div>
-              )}
-
-              {bookingForm && !submitted && (
-                <form onSubmit={handleBookVisit} className="max-w-md mx-auto">
-                  <h3 className="text-xl font-bold text-white mb-6 text-center">
-                    Book Your Visit
-                  </h3>
-                  <div className="space-y-4">
-                    <input
-                      type="text"
-                      required
-                      placeholder="Your name"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full h-12 px-4 border-2 border-white/20 bg-white/10 text-white font-mono rounded focus:border-beacon-cyan focus:outline-none placeholder:text-white/30"
-                    />
-                    <input
-                      type="email"
-                      required
-                      placeholder="Email address"
-                      value={form.email}
-                      onChange={(e) => setForm({ ...form, email: e.target.value })}
-                      className="w-full h-12 px-4 border-2 border-white/20 bg-white/10 text-white font-mono rounded focus:border-beacon-cyan focus:outline-none placeholder:text-white/30"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="Phone (optional)"
-                      value={form.phone}
-                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                      className="w-full h-12 px-4 border-2 border-white/20 bg-white/10 text-white font-mono rounded focus:border-beacon-cyan focus:outline-none placeholder:text-white/30"
-                    />
-                    <textarea
-                      placeholder="Any preferences for your visit? (optional)"
-                      value={form.message}
-                      onChange={(e) => setForm({ ...form, message: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-3 border-2 border-white/20 bg-white/10 text-white font-mono text-sm rounded focus:border-beacon-cyan focus:outline-none resize-none placeholder:text-white/30"
-                    />
-                    <Button type="submit" variant="primary" size="large" className="w-full">
-                      Confirm Visit →
-                    </Button>
-                  </div>
-                </form>
-              )}
-
-              {submitted && (
-                <div className="text-center">
-                  <div className="text-5xl mb-4">✓</div>
-                  <h3 className="text-2xl font-bold text-white mb-2">
-                    We&apos;ll be in touch!
-                  </h3>
-                  <p className="text-white/60">
-                    A member of our team will reach out within 24 hours
-                    to schedule your visit and arrange your full tryout package.
-                  </p>
-                </div>
-              )}
+            {/* Book a Visit CTA — Calendly */}
+            <div className="bg-beacon-dark-teal rounded-lg p-8 sm:p-12 text-center">
+              <h3 className="text-2xl font-bold text-white mb-3">
+                Ready to experience The Beacon?
+              </h3>
+              <p className="text-white/60 mb-8 max-w-lg mx-auto">
+                Book a visit and we&apos;ll arrange your full tryout package —
+                coworking day, meeting room, event access, and introductions
+                to your matched companies.
+              </p>
+              <a
+                href="https://calendly.com/robinpauwels/meeting-30"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackEvent('book_visit_click', '/tryout', { analysis_id: analysisId })}
+                className="inline-flex items-center justify-center h-14 px-10 bg-beacon-orange hover:bg-beacon-orange-hover text-white uppercase tracking-widest font-medium rounded transition-all duration-300 text-sm"
+              >
+                Book Your Visit →
+              </a>
             </div>
           </div>
         </div>
