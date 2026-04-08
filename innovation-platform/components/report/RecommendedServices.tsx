@@ -13,10 +13,10 @@ export default function RecommendedServices({ offerings, beaconRelevance }: Reco
   if (!offerings || offerings.length === 0) return null;
 
   return (
-    <section className="bg-white py-20 px-6">
+    <section className="bg-beacon-light-gray py-20 px-6">
       <div className="max-w-5xl mx-auto">
         <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-beacon-dark-teal mb-4">
-          What We Can Do Together
+          How The Beacon Can Help
         </h2>
 
         {beaconRelevance && (
@@ -25,20 +25,18 @@ export default function RecommendedServices({ offerings, beaconRelevance }: Reco
           </p>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
           {offerings.map((offering, i) => (
-            <Card key={i} className="p-8 relative" hover>
-              {i === 0 && (
-                <Badge variant="default" className="absolute top-4 right-4">
-                  ⭐ Best Match
-                </Badge>
-              )}
-              <h3 className="text-xl font-bold text-beacon-dark-teal pr-24 mb-4">
-                {offering.offering}
-              </h3>
-              <p className="text-sm text-beacon-dark-teal/70 leading-relaxed">
-                {offering.match_reason}
-              </p>
+            <Card key={i} className="p-6 sm:p-8" hover>
+              <div className="flex items-start gap-4">
+                {i === 0 && <Badge variant="default" className="flex-shrink-0">Best Match</Badge>}
+                <div>
+                  <h3 className="text-lg font-bold text-beacon-dark-teal">{offering.offering}</h3>
+                  <p className="mt-2 text-sm text-beacon-dark-teal/70 leading-relaxed">
+                    {offering.match_reason}
+                  </p>
+                </div>
+              </div>
             </Card>
           ))}
         </div>

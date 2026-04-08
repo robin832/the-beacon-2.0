@@ -16,7 +16,7 @@ import { CompanyCandidate } from '@/lib/types';
 const ALL_VERTICALS = [
   'Maritime & Port', 'Chemical', 'Technology', 'Logistics',
   'Manufacturing', 'Energy', 'Food & Agri', 'Construction',
-  'Financial Services', 'Healthcare', 'Other',
+  'Financial Services', 'Healthcare', 'Professional Services', 'Other',
 ];
 
 export default function VerticalsPage() {
@@ -28,15 +28,14 @@ export default function VerticalsPage() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem('confirmed_company');
-    if (!stored) {
-      router.push('/');
-      return;
-    }
+    if (!stored) { router.push('/'); return; }
     const c = JSON.parse(stored) as CompanyCandidate;
     setCompany(c);
 
-    // Pre-select verticals based on detected industry
-    if (c.industry) {
+    // Use AI-suggested verticals if available, otherwise guess from industry
+    if (c.suggested_verticals && c.suggested_verticals.length > 0) {
+      setSelectedVerticals(c.suggested_verticals);
+    } else if (c.industry) {
       const matched = ALL_VERTICALS.filter((v) =>
         c.industry!.toLowerCase().includes(v.toLowerCase().split(' ')[0].toLowerCase())
       );
@@ -59,8 +58,6 @@ export default function VerticalsPage() {
 
     try {
       const sessionId = getSessionId();
-
-      // Create the analysis record with confirmed verticals
       const { data: analysis, error: insertError } = await supabase
         .from('analyses')
         .insert({
@@ -78,7 +75,6 @@ export default function VerticalsPage() {
 
       sessionStorage.setItem('analysis_id', analysis.id);
 
-      // Trigger analysis with verticals as context
       supabase.functions.invoke('innovation-analysis', {
         body: {
           analysis_id: analysis.id,
@@ -97,15 +93,9 @@ export default function VerticalsPage() {
     }
   };
 
-  if (loading) {
-    return <PageTransition message="Setting up" submessage="Preparing your innovation profile..." />;
-  }
-  if (starting) {
-    return <PageTransition message="Launching analysis" submessage="Our AI is getting ready to research your company..." />;
-  }
-  if (!company) {
-    return <PageTransition message="Loading" />;
-  }
+  if (loading) return <PageTransition message="Setting up" submessage="Preparing your innovation profile..." />;
+  if (starting) return <PageTransition message="Launching analysis" submessage="Our AI is getting ready to research your company..." />;
+  if (!company) return <PageTransition message="Loading" />;
 
   return (
     <div className="relative min-h-screen bg-beacon-light-gray flex flex-col">
@@ -119,12 +109,16 @@ export default function VerticalsPage() {
             Which industries
             <br />apply to you?
           </h1>
-          <p className="text-beacon-medium-gray mb-8">
-            Select the verticals that are relevant to{' '}
+          <p className="text-beacon-medium-gray mb-2">
+            Our AI detected the following verticals for{' '}
             <strong className="text-beacon-dark-teal">{company.name}</strong>.
-            This helps our AI focus its research on the right industry context and find
-            the most relevant ecosystem matches.
+            Adjust if needed — this helps focus the analysis on the right industry context.
           </p>
+          {company.suggested_verticals && company.suggested_verticals.length > 0 && (
+            <p className="text-xs text-beacon-cyan font-mono mb-8">
+              AI-suggested based on web research
+            </p>
+          )}
 
           <Card className="p-8 mb-8">
             <div className="grid grid-cols-2 gap-3">
@@ -149,12 +143,7 @@ export default function VerticalsPage() {
             </div>
           </Card>
 
-          <Button
-            variant="primary"
-            size="large"
-            onClick={handleStartAnalysis}
-            disabled={selectedVerticals.length === 0}
-          >
+          <Button variant="primary" size="large" onClick={handleStartAnalysis} disabled={selectedVerticals.length === 0}>
             Start Innovation Analysis →
           </Button>
         </div>

@@ -65,6 +65,7 @@ export interface EcosystemMatch {
   unlocked_at: string | null;
   created_at: string;
   account_name?: string;
+  account_website?: string;
   account_description?: string;
   account_industry?: string;
   account_technologies?: string[];
@@ -134,6 +135,7 @@ export interface CompanyCandidate {
   employee_range: string | null;
   founded: number | null;
   confidence: number;
+  suggested_verticals?: string[];
 }
 
 export interface DimensionInsight {
