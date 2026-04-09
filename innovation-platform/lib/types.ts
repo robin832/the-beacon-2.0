@@ -32,6 +32,7 @@ export interface Analysis {
   surprising_insight: string | null;
   quick_win: QuickWin | null;
   sources: AnalysisSource[];
+  research_data: ResearchData | null;
   analysis_status: string;
   full_analysis_json: Record<string, unknown> | null;
   account_id: string | null;
@@ -53,7 +54,18 @@ export interface MaturityDimension {
   key_findings: string[];
   sub_scores: Record<string, number>;
   insight?: string;
+  evidence_citations?: EvidenceCitation[];
+  evidence_found?: boolean;
+  source_quality?: string;
+  corroboration_count?: number;
   created_at: string;
+}
+
+export interface EvidenceCitation {
+  source_id: string;
+  url: string;
+  title: string;
+  quote?: string;
 }
 
 export interface EcosystemMatch {
@@ -75,12 +87,20 @@ export interface EcosystemMatch {
   account_industry?: string;
   account_technologies?: string[];
   match_details?: MatchDetails;
+  match_evidence?: MatchEvidence[];
 }
 
 export interface MatchDetails {
   member_expertise: string[];
   conversation_starter: string | null;
   teaser_text: string | null;
+}
+
+export interface MatchEvidence {
+  type: 'technology_overlap' | 'gap_addressal' | 'industry_relevance' | 'pain_point_match' | string;
+  prospect_signal: string;
+  member_signal: string;
+  strength: 'strong' | 'moderate' | 'weak' | string;
 }
 
 export interface Interaction {
@@ -114,11 +134,15 @@ export interface TechnologyDetected {
   technology: string;
   source?: string;
   context?: string;
+  maturity?: 'in_production' | 'in_pilot' | 'planned' | 'mentioned' | string;
+  beacon_bridge?: string;
 }
 
 export interface StrategicGoal {
   goal: string;
   relevance: string;
+  alignment?: 'aligned' | 'counter' | 'ahead' | string;
+  alignment_explanation?: string;
   source?: string;
 }
 
@@ -132,11 +156,23 @@ export interface ActiveProject {
 export interface InnovationOpportunity {
   opportunity: string;
   explanation: string;
+  specific_idea?: string;
+  real_world_example?: RealWorldExample;
+  expected_impact?: string;
   priority: string;
   quick_win?: boolean;
   beacon_connection?: string;
+  source?: string;
   // Backwards compat with old gap format
   gap?: string;
+}
+
+export interface RealWorldExample {
+  company: string;
+  what_they_did: string;
+  result: string;
+  url: string;
+  relevance_to_prospect?: string;
 }
 
 export interface PainPoint {
@@ -170,6 +206,34 @@ export interface AnalysisSource {
   url: string;
   date: string;
   type: string;
+}
+
+export interface ResearchData {
+  searches_conducted: SearchResult[];
+  total_sources_found: number;
+  sources_used: number;
+  sources_rejected: number;
+  rejection_reasons: string;
+}
+
+export interface SearchResult {
+  query: string;
+  key_findings: SearchFinding[];
+}
+
+export interface SearchFinding {
+  source_id: string;
+  url: string;
+  title: string;
+  date_published: string;
+  relevant_quotes: string[];
+  data_points_extracted: {
+    technologies: string[];
+    investments: string | null;
+    partnerships: string | null;
+    projects: string[];
+  };
+  relevant_to_dimensions: string[];
 }
 
 export interface CompanyCandidate {

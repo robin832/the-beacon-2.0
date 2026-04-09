@@ -10,7 +10,7 @@ import PageTransition from '@/components/ui/PageTransition';
 import ContactForm from '@/components/report/ContactForm';
 import { supabase } from '@/lib/supabase';
 import { trackEvent } from '@/lib/tracking';
-import { Analysis, EcosystemMatch, MatchDetails } from '@/lib/types';
+import { Analysis, EcosystemMatch, MatchDetails, MatchEvidence } from '@/lib/types';
 
 const facilityImages = [
   { src: '/facilities/building.jpg', alt: 'The Beacon building', label: 'The Beacon' },
@@ -247,7 +247,7 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
 
   if (locked) {
     return (
-      <div className="border-2 border-beacon-border rounded-lg relative overflow-hidden bg-white h-[240px]">
+      <div className="border-2 border-beacon-border rounded-lg relative overflow-hidden bg-white h-[300px]">
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-5 text-center">
           {match.match_category && (
             <Badge variant="cyan" className="mb-3">{match.match_category}</Badge>
@@ -273,8 +273,10 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
     );
   }
 
+  const evidence: MatchEvidence[] = (match.match_evidence as MatchEvidence[]) || [];
+
   return (
-    <Card className="p-5 border-beacon-cyan/30 flex flex-col h-[240px]">
+    <Card className="p-5 border-beacon-cyan/30 flex flex-col h-[300px]">
       <div className="flex items-start justify-between mb-3">
         <h3 className="text-lg font-bold text-beacon-dark-teal leading-tight">
           {match.account_name || 'Beacon Member'}
@@ -282,10 +284,24 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
         {match.match_category && <Badge variant="cyan" className="text-[9px] flex-shrink-0">{match.match_category}</Badge>}
       </div>
 
+      {/* Why matched — use case focused rationale */}
       {match.match_rationale && (
-        <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mb-3 flex-1 line-clamp-4">
+        <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mb-3 line-clamp-3">
           {match.match_rationale}
         </p>
+      )}
+
+      {/* Match evidence: Your signal → Their strength */}
+      {evidence.length > 0 && (
+        <div className="space-y-2 mb-3 flex-1">
+          {evidence.slice(0, 2).map((ev, i) => (
+            <div key={i} className="flex items-start gap-2 text-[11px]">
+              <span className="text-beacon-dark-teal/50 flex-1 truncate">{ev.prospect_signal}</span>
+              <span className="text-beacon-cyan flex-shrink-0">&rarr;</span>
+              <span className="text-beacon-dark-teal/70 flex-1 truncate font-medium">{ev.member_signal}</span>
+            </div>
+          ))}
+        </div>
       )}
 
       <div className="mt-auto pt-3 border-t border-beacon-border">

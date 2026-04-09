@@ -75,7 +75,14 @@ This is where you build the industry intelligence that makes the report credible
 - `"{detected_industry}" Belgium innovation leaders 2025` — who are the innovation leaders in their sector?
 - `"{detected_industry}" Belgium digital transformation benchmark` — how does the sector compare?
 
-This gives you the comparative frame for the "What Surprised Us" insight and the industry positioning.
+This gives you the comparative frame for the "What Stood Out" insight and the industry positioning.
+
+### Step 4: Real-World Examples for Opportunities (1 search per opportunity)
+
+For each identified opportunity, search for:
+- `"[opportunity topic]" [industry] case study implementation 2024 OR 2025`
+
+Find a real company that implemented something similar and extract: company name, what they did, the result, and a URL. This makes opportunities concrete and credible.
 
 ---
 
@@ -144,11 +151,13 @@ Each dimension has 3-4 sub-indicators. Score each sub-indicator from 0-5, then c
 
 ---
 
-## PHASE 3: Source Attribution
+## PHASE 3: Source Attribution & Research Data
 
 Every factual claim in the output must be traceable. The output includes a `sources` array. Each source has an `id` (e.g., "S1", "S2") that is referenced in evidence text and key findings.
 
-Format evidence like: "According to their 2024 annual report [S1], the company invested €12M in R&D. Their partnership with imec [S2] focuses on sensor technology for chemical process monitoring."
+Format evidence like: "According to [their 2024 annual report](url) [S1], the company invested €12M in R&D. Their partnership with imec [S2] focuses on sensor technology for chemical process monitoring."
+
+Use inline markdown links throughout all text fields — every factual claim should link to its source.
 
 Sources should include:
 - Company website pages
@@ -161,11 +170,15 @@ Sources should include:
 
 If a claim cannot be sourced, mark it explicitly: "No public data found for [topic]."
 
+Also include a `research_data` object that captures your raw research findings — the searches you conducted, what you found, and what you extracted from each source. This is the evidence base that makes the report trustworthy and enables inline source links throughout the frontend.
+
 ---
 
 ## PHASE 4: The "What Stood Out" Insight
 
 Generate ONE specific, **positive** insight that highlights a strength, competitive advantage, or something the company is doing well that they may not fully realize. The goal is to make the reader feel validated and encouraged — they should think "we're on the right track."
+
+The surprising insight MUST include at least one specific number, comparison, or fact that is directly sourced from your research. It must reference a specific source from your research_data. Generic observations like "the company has room for improvement in digital transformation" are NOT acceptable.
 
 This should be:
 - **Comparative:** How they compare favorably to competitors or sector norms
@@ -186,6 +199,12 @@ Examples of good insights:
 ## PHASE 5: Opportunity Framing
 
 Frame all findings as **opportunities**, not deficiencies. This is an opportunity map, not a report card.
+
+For each opportunity, you MUST:
+1. Provide a SPECIFIC, CONCRETE idea (not generic advice like "invest in digital transformation")
+2. Search for a real-world example of a company that did something similar
+3. Include the real company example with URL, what they did, and the result
+4. Estimate expected impact in one sentence
 
 Instead of: "The company lacks a digital transformation strategy."
 Write: "There's a significant opportunity for [Company] to gain competitive advantage through a structured digital transformation initiative — especially given that only 30% of Belgian [sector] companies have a formal digital strategy in place."
@@ -214,7 +233,7 @@ Return ONLY a valid JSON object. No markdown, no code fences, no text before or 
   "maturity_level": "Innovation Active",
   "industry": "Chemical & Process Industry",
   "company_type": "Industrial",
-  "surprising_insight": "One bold, specific insight as described in Phase 4.",
+  "surprising_insight": "One bold, specific, POSITIVE insight as described in Phase 4. Must include a sourced data point.",
   "dimensions": [
     {
       "dimension_name": "R&D & Technology Investment",
@@ -226,90 +245,56 @@ Return ONLY a valid JSON object. No markdown, no code fences, no text before or 
         "ip_knowledge_creation": 3.5,
         "technical_talent_investment": 3.5
       },
-      "evidence": "2-3 sentences with specific facts and source references [S1], [S2].",
+      "evidence": "2-3 sentences with specific facts, inline markdown links, and source references [S1], [S2].",
       "key_findings": ["Specific finding with source [S1]", "Another finding [S3]"],
       "insight": "One sentence: what this means as an opportunity for the company."
     },
-    {
-      "dimension_name": "Product & Service Innovation",
-      "score": 3.0,
-      "weight": 0.25,
-      "sub_scores": {
-        "new_offering_pipeline": 3.0,
-        "market_differentiation": 3.0,
-        "customer_centricity": 2.5,
-        "innovation_awards": 3.5
-      },
-      "evidence": "...",
-      "key_findings": ["..."],
-      "insight": "..."
-    },
-    {
-      "dimension_name": "Digital Transformation",
-      "score": 2.5,
-      "weight": 0.20,
-      "sub_scores": {
-        "data_analytics_maturity": 2.0,
-        "process_digitalization": 3.0,
-        "digital_customer_experience": 2.5,
-        "cloud_infrastructure": 2.5
-      },
-      "evidence": "...",
-      "key_findings": ["..."],
-      "insight": "..."
-    },
-    {
-      "dimension_name": "External Partnerships & Open Innovation",
-      "score": 2.0,
-      "weight": 0.15,
-      "sub_scores": {
-        "ecosystem_participation": 2.0,
-        "startup_collaboration": 1.5,
-        "academic_research_links": 2.5,
-        "cross_industry_collaboration": 2.0
-      },
-      "evidence": "...",
-      "key_findings": ["..."],
-      "insight": "..."
-    },
-    {
-      "dimension_name": "Market Leadership & Strategic Vision",
-      "score": 3.0,
-      "weight": 0.15,
-      "sub_scores": {
-        "thought_leadership": 2.5,
-        "strategic_vision_articulation": 3.0,
-        "sustainability_esg_innovation": 3.5,
-        "future_readiness": 3.0
-      },
-      "evidence": "...",
-      "key_findings": ["..."],
-      "insight": "..."
-    }
+    { "...4 more dimensions with the same structure..." }
   ],
   "technologies_detected": [
-    { "technology": "IoT Sensor Networks", "source": "S2", "context": "Used in process monitoring" }
+    {
+      "technology": "IoT Sensor Networks",
+      "source": "S2",
+      "context": "Used in process monitoring across 3 plants",
+      "maturity": "in_production",
+      "beacon_bridge": "4 Beacon members work with IoT sensor networks — including 2 in your sector"
+    }
   ],
   "strategic_goals": [
-    { "goal": "Goal description", "relevance": "Why this matters for THIS company", "source": "S1" }
+    {
+      "goal": "Goal description",
+      "relevance": "Why this matters for THIS company",
+      "alignment": "aligned",
+      "alignment_explanation": "This aligns with the broader European push toward smart ports...",
+      "source": "S1"
+    }
   ],
   "active_projects": [
     { "name": "Project name", "status": "active", "description": "Brief description", "source": "S3" }
   ],
   "innovation_opportunities": [
     {
-      "opportunity": "Opportunity name",
+      "opportunity": "Real-time Supply Chain Visibility",
+      "specific_idea": "Implement a container-level tracking system that integrates with your existing TMS. Start with your highest-volume corridor as a pilot, then expand.",
+      "real_world_example": {
+        "company": "Company that did something similar",
+        "what_they_did": "What they implemented specifically",
+        "result": "The measurable result they achieved",
+        "url": "https://source-url",
+        "relevance_to_prospect": "Why this example is relevant to this company"
+      },
+      "expected_impact": "Potential to reduce container dwell time by 20-30%",
       "explanation": "Why this is valuable for this company specifically",
       "priority": "high",
       "quick_win": true,
-      "beacon_connection": "How The Beacon ecosystem can help with this specifically"
+      "beacon_connection": "3 Beacon members specialize in logistics visibility platforms. An Innovation Challenge could match you with the right technology partner in weeks."
     }
   ],
   "pain_points_detected": [
     { "pain_point": "Pain point", "explanation": "Evidence and impact", "source": "S1" }
   ],
   "industry_landscape": {
-    "current_trends": "2-3 paragraphs on what's transforming their sector in Belgium/Europe RIGHT NOW. Reference specific organizations, regulations, and initiatives. This must feel like it was written by a Belgian industry insider.",
+    "current_trends": "2-3 paragraphs on what's transforming their sector in Belgium/Europe RIGHT NOW. Reference specific organizations, regulations, and initiatives with inline source links. This must feel like it was written by a Belgian industry insider.",
     "competitive_position": "1 paragraph on where this company sits relative to sector innovation leaders. Name specific competitors or reference groups if possible.",
     "emerging_opportunities": "1 paragraph on what's coming in the next 2-3 years that this company should prepare for."
   },
@@ -317,7 +302,6 @@ Return ONLY a valid JSON object. No markdown, no code fences, no text before or 
   "recommended_offerings": [
     {
       "offering": "Explore Partnership",
-      "price": "€5,000/year",
       "match_reason": "Specific reason tied to their opportunities and gaps"
     }
   ],
@@ -325,6 +309,33 @@ Return ONLY a valid JSON object. No markdown, no code fences, no text before or 
     "action": "One specific thing they could start this quarter",
     "why": "Why this is the highest-ROI first move",
     "beacon_link": "How The Beacon can help with this specifically"
+  },
+  "research_data": {
+    "searches_conducted": [
+      {
+        "query": "Search query used",
+        "key_findings": [
+          {
+            "source_id": "S1",
+            "url": "https://...",
+            "title": "Page or article title",
+            "date_published": "2025",
+            "relevant_quotes": ["Key quote or data point found"],
+            "data_points_extracted": {
+              "technologies": ["Digital Twin"],
+              "investments": "€15M Innovation Hub",
+              "partnerships": null,
+              "projects": ["Circular Polymers Program"]
+            },
+            "relevant_to_dimensions": ["rd_tech_investment"]
+          }
+        ]
+      }
+    ],
+    "total_sources_found": 12,
+    "sources_used": 8,
+    "sources_rejected": 4,
+    "rejection_reasons": "4 sources from before 2024 were excluded for recency"
   },
   "sources": [
     { "id": "S1", "title": "Source title or description", "url": "https://...", "date": "2025-03", "type": "company_website" },

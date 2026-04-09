@@ -52,15 +52,47 @@ For each member company (up to 6), generate a match profile designed to make the
 **3. why_this_match** (2-3 sentences) — THE MOST IMPORTANT FIELD
 
 This is what makes the prospect care. It must:
-- Start with the prospect's specific challenge or opportunity (not the member's capabilities)
+- Start with the prospect's specific challenge, use case, or opportunity (not the member's capabilities)
 - Connect that challenge to what THIS member has done or can do
+- Be concrete — reference specific technologies, projects, or capabilities
 - Feel like a recommendation from a trusted advisor, not a database query result
 
 Good example: "Your analysis identified a significant opportunity in digitizing your supply chain visibility. [Member] built a real-time tracking platform for chemical transport across the Antwerp-Rotterdam corridor — exactly the kind of infrastructure you'd need. They've already solved the regulatory compliance challenges around dangerous goods tracking that would be your biggest hurdle."
 
 Bad example: "Both companies operate in the logistics sector and share interests in digital transformation and IoT technologies."
 
-**4. member_expertise** (array of 2-3 strings) — What this member specifically brings to the table
+**4. match_evidence** (array of 2-3 objects) — The specific signals that led to this match
+
+Each item shows a clear connection between the prospect's needs and the member's capabilities:
+
+```json
+{
+  "type": "technology_overlap|gap_addressal|industry_relevance|pain_point_match",
+  "prospect_signal": "What was detected in the prospect's analysis",
+  "member_signal": "What this member brings",
+  "strength": "strong|moderate|weak"
+}
+```
+
+Example:
+```json
+[
+  {
+    "type": "technology_overlap",
+    "prospect_signal": "Your analysis detected IoT Sensor Networks as a core technology",
+    "member_signal": "This member specializes in Industrial IoT for chemical plants",
+    "strength": "strong"
+  },
+  {
+    "type": "gap_addressal",
+    "prospect_signal": "Your Digital Transformation score is 2.0 — below sector average",
+    "member_signal": "This member offers digital transformation consulting for process industry",
+    "strength": "strong"
+  }
+]
+```
+
+**5. member_expertise** (array of 2-3 strings) — What this member specifically brings to the table
 
 Not generic tags. Described capabilities that are relevant to the prospect.
 
@@ -68,7 +100,7 @@ Good: ["Built real-time vessel tracking for chemical tankers", "Expertise in IMO
 
 Bad: ["IoT", "Maritime", "Digital Transformation"]
 
-**5. conversation_starter** (1 sentence) — A specific question or topic for a first meeting
+**6. conversation_starter** (1 sentence) — A specific question or topic for a first meeting
 
 This makes the CTA concrete. The prospect should read this and think "yes, I'd want to ask them about that."
 
@@ -76,9 +108,9 @@ Good: "Ask them how they achieved 30% reduction in container dwell time at the A
 
 Bad: "Discuss potential collaboration opportunities in supply chain optimization."
 
-**6. shared_sectors** (array of 1-3 strings) — Industry verticals they share with the prospect. Use the standard Beacon classifications.
+**7. shared_sectors** (array of 1-3 strings) — Industry verticals they share with the prospect. Use the standard Beacon classifications.
 
-**7. teaser_text** (1 sentence) — Used ONLY for the locked cards. A compelling but vague description that creates curiosity without revealing identity.
+**8. teaser_text** (1 sentence) — Used ONLY for the locked cards. A compelling but vague description that creates curiosity without revealing identity.
 
 Good: "A Technology Partner that has already solved the dangerous goods tracking challenge you're facing — in the same port ecosystem."
 
@@ -121,6 +153,14 @@ Return ONLY a valid JSON array, ordered by rank (strongest first). No markdown, 
     "match_score": 0.85,
     "match_category": "Technology Partner",
     "why_this_match": "2-3 sentences starting with the prospect's challenge, connecting to the member's specific capability.",
+    "match_evidence": [
+      {
+        "type": "technology_overlap",
+        "prospect_signal": "What was detected in the prospect's analysis",
+        "member_signal": "What this member brings",
+        "strength": "strong"
+      }
+    ],
     "member_expertise": [
       "Specific described capability relevant to prospect",
       "Another specific capability",
