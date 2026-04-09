@@ -120,9 +120,9 @@ Sub-indicators: thought_leadership, strategic_vision_articulation, sustainabilit
 Every factual claim must be traceable. Include a sources array with id (S1, S2...), title, url, date, type.
 Reference sources in evidence like: "According to their 2024 annual report [S1], the company invested..."
 
-## PHASE 4: The "What Surprised Us" Insight
+## PHASE 4: The "What Stood Out" Insight
 
-Generate ONE specific, bold insight. Must be comparative, quantifiable if possible, non-obvious, and actionable.
+Generate ONE specific, positive insight that highlights something the company is doing well or a strength they may not fully realize. It should make them feel validated and encouraged. Must be comparative, quantifiable if possible, non-obvious, and forward-looking. Frame it as a competitive advantage or a lead worth protecting — never as a gap or criticism.
 
 ## PHASE 5: Opportunity Framing
 

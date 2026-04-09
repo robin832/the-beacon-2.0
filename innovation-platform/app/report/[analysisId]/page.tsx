@@ -15,7 +15,6 @@ import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
 import TechTag from '@/components/ui/TechTag';
 import QuickWin from '@/components/report/QuickWin';
-import RecommendedServices from '@/components/report/RecommendedServices';
 import RatingAndCTA from '@/components/report/RatingAndCTA';
 import Footer from '@/components/layout/Footer';
 
@@ -64,10 +63,6 @@ export default function ReportPage() {
     };
   });
 
-  const painPoints = (analysis.pain_points_detected || []).map((p) =>
-    typeof p === 'string' ? { pain_point: p, explanation: '' } : p
-  );
-
   // Parse technologies — handle both string[] and object[] formats
   const technologies: TechnologyDetected[] = (analysis.technologies_detected || []).map((t) =>
     typeof t === 'string' ? { technology: t } : t as TechnologyDetected
@@ -75,9 +70,6 @@ export default function ReportPage() {
 
   // Sources
   const sources: AnalysisSource[] = analysis.sources || [];
-
-  // Ecosystem match count for teaser
-  const matchTeaserLink = `/tryout/${analysisId}`;
 
   return (
     <div className="min-h-screen">
@@ -92,6 +84,7 @@ export default function ReportPage() {
         context={analysis.industry_context}
         industry={analysis.industry}
         landscape={analysis.industry_landscape}
+        companyName={analysis.company_name}
       />
 
       {/* Section 4: Your Position — white background */}
@@ -101,28 +94,34 @@ export default function ReportPage() {
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-beacon-dark-teal">
               Where {analysis.company_name} Sits in This Landscape
             </h2>
-            <Badge variant="cyan">AI-Analyzed</Badge>
           </div>
-          <p className="text-beacon-medium-gray mb-4 max-w-2xl">
+          <p className="text-beacon-medium-gray mb-12 max-w-2xl">
             Your innovation score of <strong className="text-beacon-dark-teal">{Number(analysis.overall_score)?.toFixed(1)}/5.0</strong> is
             based on 5 dimensions, scored from publicly available evidence — website, press releases,
             patent filings, partnerships, and industry publications.
           </p>
-          {analysis.data_confidence && (
-            <div className="p-3 bg-beacon-light-gray/60 rounded border border-beacon-border mb-12 inline-block">
-              <span className="text-[10px] font-mono tracking-widest uppercase text-beacon-medium-gray">
-                Data confidence: {analysis.data_confidence}
-              </span>
-              {analysis.data_confidence_explanation && (
-                <p className="text-xs text-beacon-medium-gray mt-1">{analysis.data_confidence_explanation}</p>
-              )}
-            </div>
-          )}
 
           {dimensions.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
               <div className="lg:sticky lg:top-24">
                 <RadarChart dimensions={dimensions} />
+                {/* Dimension score legend below chart */}
+                <div className="mt-6 grid grid-cols-1 gap-2">
+                  {dimensions.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between px-3 py-2 bg-beacon-light-gray rounded">
+                      <span className="text-sm text-beacon-dark-teal font-medium">{d.dimension_name}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-1.5 bg-beacon-border rounded-full">
+                          <div
+                            className="h-1.5 bg-beacon-cyan rounded-full"
+                            style={{ width: `${((d.score || 0) / 5) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-bold text-beacon-dark-teal w-8 text-right">{d.score?.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <MaturityBreakdown dimensions={dimensions} />
             </div>
@@ -228,10 +227,10 @@ export default function ReportPage() {
             Your Recommended Next Steps
           </h2>
 
-          {/* Quick Win prominently displayed */}
+          {/* Quick Win */}
           <QuickWin quickWin={analysis.quick_win} />
 
-          {/* Recommended Beacon offerings */}
+          {/* Recommended Beacon offerings — no pricing */}
           {analysis.recommended_offerings && analysis.recommended_offerings.length > 0 && (
             <div className="mt-12">
               <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-6">
@@ -245,45 +244,25 @@ export default function ReportPage() {
               <div className="space-y-4">
                 {analysis.recommended_offerings.map((offering, i) => (
                   <Card key={i} className="p-6" hover>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-4">
-                        {i === 0 && <Badge variant="default" className="flex-shrink-0">Best Match</Badge>}
-                        <div>
-                          <h4 className="text-lg font-bold text-beacon-dark-teal">{offering.offering}</h4>
-                          <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">
-                            {offering.match_reason}
-                          </p>
-                        </div>
+                    <div className="flex items-start gap-4">
+                      {i === 0 && <Badge variant="default" className="flex-shrink-0">Best Match</Badge>}
+                      <div>
+                        <h4 className="text-lg font-bold text-beacon-dark-teal">{offering.offering}</h4>
+                        <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">
+                          {offering.match_reason}
+                        </p>
                       </div>
-                      {offering.price && (
-                        <span className="text-sm font-mono text-beacon-dark-teal/50 flex-shrink-0">{offering.price}</span>
-                      )}
                     </div>
                   </Card>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Ecosystem teaser */}
-          <div className="mt-12 p-6 bg-beacon-light-gray rounded-lg border border-beacon-border">
-            <p className="text-beacon-dark-teal/70 leading-relaxed">
-              We&apos;ve identified companies in The Beacon ecosystem that could help you act on these opportunities.
-            </p>
-            <a
-              href={matchTeaserLink}
-              className="inline-flex items-center mt-4 text-sm font-bold text-beacon-cyan hover:text-beacon-dark-teal transition-colors"
-            >
-              See your ecosystem matches &rarr;
-            </a>
-          </div>
         </div>
       </section>
 
-      {/* Section 7: Sources & Confidence — light gray, subtle */}
-      {(sources.length > 0 || analysis.data_confidence) && (
-        <SourcesSection sources={sources} confidence={analysis.data_confidence} explanation={analysis.data_confidence_explanation} />
-      )}
+      {/* Section 7: Sources & Confidence — clearly visible */}
+      <SourcesSection sources={sources} confidence={analysis.data_confidence} explanation={analysis.data_confidence_explanation} />
 
       {/* Section 8: CTA — Rating + Contact */}
       <RatingAndCTA analysisId={analysisId} companyName={analysis.company_name} />
@@ -298,17 +277,17 @@ function SourcesSection({ sources, confidence, explanation }: {
   confidence: string | null;
   explanation: string | null;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  if (sources.length === 0 && !confidence) return null;
 
   return (
-    <section className="bg-beacon-light-gray py-12 px-6">
+    <section className="bg-beacon-light-gray py-16 px-6">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray">
-            Sources & Data Confidence
-          </h3>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-black tracking-tight text-beacon-dark-teal">
+            Data Sources
+          </h2>
           {confidence && (
-            <span className={`text-[10px] font-mono tracking-widest uppercase px-2 py-1 rounded ${
+            <span className={`text-[10px] font-mono tracking-widest uppercase px-3 py-1.5 rounded ${
               confidence === 'high' ? 'bg-green-50 text-green-700' :
               confidence === 'medium' ? 'bg-yellow-50 text-yellow-700' :
               'bg-red-50 text-red-600'
@@ -319,53 +298,42 @@ function SourcesSection({ sources, confidence, explanation }: {
         </div>
 
         {explanation && (
-          <p className="text-sm text-beacon-dark-teal/60 leading-relaxed mb-4">{explanation}</p>
+          <p className="text-sm text-beacon-dark-teal/60 leading-relaxed mb-6">{explanation}</p>
         )}
 
         {sources.length > 0 && (
-          <>
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="text-xs font-mono tracking-widest uppercase text-beacon-cyan hover:text-beacon-dark-teal transition-colors"
-            >
-              {expanded ? 'Hide sources' : `Show ${sources.length} sources used`}
-            </button>
-
-            {expanded && (
-              <div className="mt-4 space-y-2">
-                {sources.map((source) => (
-                  <div key={source.id} className="flex items-start gap-3 text-sm">
-                    <span className="text-[10px] font-mono text-beacon-medium-gray bg-beacon-border/50 px-1.5 py-0.5 rounded flex-shrink-0">
-                      {source.id}
+          <div className="space-y-3">
+            {sources.map((source) => (
+              <div key={source.id} className="flex items-start gap-3 bg-white rounded-lg p-4 border border-beacon-border">
+                <span className="text-[10px] font-mono font-bold text-beacon-cyan bg-beacon-cyan/10 px-2 py-1 rounded flex-shrink-0 mt-0.5">
+                  {source.id}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-beacon-dark-teal">{source.title}</span>
+                  {source.url && (
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-xs text-beacon-cyan hover:underline truncate mt-0.5"
+                    >
+                      {source.url}
+                    </a>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {source.date && (
+                    <span className="text-[10px] font-mono text-beacon-medium-gray">{source.date}</span>
+                  )}
+                  {source.type && (
+                    <span className="text-[10px] font-mono text-beacon-medium-gray bg-beacon-light-gray px-2 py-0.5 rounded">
+                      {source.type.replace(/_/g, ' ')}
                     </span>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-beacon-dark-teal/70">{source.title}</span>
-                      {source.url && (
-                        <a
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block text-xs text-beacon-cyan hover:underline truncate"
-                        >
-                          {source.url}
-                        </a>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {source.date && (
-                        <span className="text-[10px] font-mono text-beacon-medium-gray">{source.date}</span>
-                      )}
-                      {source.type && (
-                        <span className="text-[10px] font-mono text-beacon-medium-gray bg-beacon-border/30 px-1.5 py-0.5 rounded">
-                          {source.type.replace(/_/g, ' ')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
-            )}
-          </>
+            ))}
+          </div>
         )}
       </div>
     </section>

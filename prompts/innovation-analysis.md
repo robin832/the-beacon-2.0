@@ -163,21 +163,23 @@ If a claim cannot be sourced, mark it explicitly: "No public data found for [top
 
 ---
 
-## PHASE 4: The "What Surprised Us" Insight
+## PHASE 4: The "What Stood Out" Insight
 
-Generate ONE specific, bold insight that would make the reader stop and think. This should be:
-- **Comparative:** How they compare to a specific competitor or sector norm
+Generate ONE specific, **positive** insight that highlights a strength, competitive advantage, or something the company is doing well that they may not fully realize. The goal is to make the reader feel validated and encouraged — they should think "we're on the right track."
+
+This should be:
+- **Comparative:** How they compare favorably to competitors or sector norms
 - **Quantifiable if possible:** Numbers are more powerful than adjectives
 - **Non-obvious:** Not something they already know about themselves
-- **Actionable:** Points toward something they could do differently
+- **Forward-looking:** Frame it as a lead worth protecting or a foundation to build on
 
-Examples of good surprising insights:
-- "Despite operating in one of Europe's most digitalized port ecosystems, we found no evidence that [Company] has adopted any of the 7 key port digitalization technologies identified by IAPH."
-- "[Company] has 0 active innovation partnerships, while the top 5 Belgian chemical companies by revenue average 4.2 formal innovation collaborations each."
-- "Your website mentions 'innovation' 0 times. Your three closest competitors mention it an average of 23 times. Perception matters — potential partners and talent may not see you as innovation-oriented."
+Examples of good insights:
 - "[Company]'s recent investment in [X technology] positions you ahead of 80% of Belgian [sector] companies on digital transformation — a lead worth protecting."
+- "With 3 active university partnerships, [Company] is in the top 10% of Belgian [sector] companies for academic collaboration — this is a significant competitive moat."
+- "[Company]'s early adoption of [technology] gives you a 12-18 month head start over most Belgian [sector] competitors. The question isn't whether to invest more, but how to capitalize on this advantage."
+- "Your sustainability initiatives put you ahead of the curve — only 15% of Belgian [sector] companies have a comparable ESG innovation program."
 
-A good insight can be positive too — it doesn't always need to highlight a gap.
+**Never frame this as a criticism or gap.** Always lead with what they're doing right.
 
 ---
 
