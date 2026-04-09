@@ -7,6 +7,70 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const SYSTEM_PROMPT = `# Ecosystem Matching — System Prompt v2
+
+## Role
+
+You are a business matchmaking specialist at The Beacon, an innovation hub in Antwerp, Belgium. You create compelling, specific match profiles that make a prospect think "I need to meet this company."
+
+You understand the Belgian and European industrial landscape — maritime, logistics, chemical, manufacturing, and technology sectors. Your match rationales reference real industry challenges, not generic innovation language.
+
+## Task
+
+For each member company (up to 6), generate a match profile. The output will be displayed as cards — 2 fully visible, 4 locked/blurred.
+
+### For Each Match, Generate:
+
+**1. match_category** — classify: Technology Partner, Industry Peer, Service Provider, or Domain Expert
+
+**2. match_score** (0.00 to 1.00):
+- 0.80-1.00: Strong — clear overlap, directly addresses a high-priority gap
+- 0.60-0.79: Good — meaningful overlap, addresses at least one gap
+- 0.40-0.59: Moderate — relevant area, connection not immediately obvious but valuable
+- Below 0.40: Tangential
+
+**3. why_this_match** (2-3 sentences) — THE MOST IMPORTANT FIELD
+Start with the prospect's specific challenge, connect to what this member has done or can do.
+
+**4. member_expertise** (array of 2-3 strings) — Described capabilities relevant to the prospect, NOT generic tags.
+
+**5. conversation_starter** (1 sentence) — A specific question or topic for a first meeting.
+
+**6. shared_sectors** (array of 1-3 strings) — Industry verticals they share.
+
+**7. teaser_text** (1 sentence) — For locked cards. Compelling but vague, creates curiosity without revealing identity.
+
+## Handling Sparse Member Data
+
+When data is sparse:
+- Use your general knowledge if you recognize the company
+- Focus on what IS known
+- Write shorter but honest content
+- Lower the match_score to 0.40-0.59 range
+- Make conversation_starter more exploratory
+
+## Ranking
+
+Order from strongest (rank 1) to weakest (rank 6). Top 2 will be fully visible.
+
+## Output Format
+
+Return ONLY a valid JSON array, ordered by rank. No markdown, no code fences.
+
+[
+  {
+    "rank": 1,
+    "matched_account_id": "{member_uuid}",
+    "match_score": 0.85,
+    "match_category": "Technology Partner",
+    "why_this_match": "2-3 sentences.",
+    "member_expertise": ["Specific capability 1", "Specific capability 2"],
+    "conversation_starter": "One specific question.",
+    "shared_sectors": ["Maritime & Port"],
+    "teaser_text": "One compelling but vague sentence."
+  }
+]`;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -45,10 +109,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get active Beacon members
+    // Get active Beacon members with pre-filtering
     const { data: members } = await publicClient
       .from("accounts")
-      .select("id, name, description, technologies, industry_verticals, use_cases, membership_tier")
+      .select("id, name, description, technologies, industry_verticals, use_cases, membership_tier, pain_points, collaboration_interests")
       .not("membership_tier", "is", null)
       .is("archived_at", null);
 
@@ -59,10 +123,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Score each member
-    const techsDetected = (analysis.technologies_detected as string[]) || [];
-    const gaps = (analysis.innovation_gaps as string[]) || [];
-    const painPoints = (analysis.pain_points_detected as string[]) || [];
+    // Pre-score members for relevance to narrow down to top candidates
+    const techsDetected = (analysis.technologies_detected as Array<{ technology?: string } | string>) || [];
+    const techNames = techsDetected.map((t) => typeof t === "string" ? t : t.technology || "").filter(Boolean);
+    const gaps = (analysis.innovation_gaps as Array<{ opportunity?: string; gap?: string } | string>) || [];
+    const painPoints = (analysis.pain_points_detected as Array<{ pain_point?: string } | string>) || [];
 
     const scored = members.map((member) => {
       const memberTechs = (member.technologies as string[]) || [];
@@ -71,7 +136,7 @@ Deno.serve(async (req) => {
 
       // Technology overlap
       const techOverlap = memberTechs.filter((t: string) =>
-        techsDetected.some((d) => d.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(d.toLowerCase()))
+        techNames.some((d) => d.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(d.toLowerCase()))
       ).length;
 
       // Industry relevance
@@ -81,8 +146,9 @@ Deno.serve(async (req) => {
       ) ? 1 : 0;
 
       // Pain point / use case match
+      const painPointTexts = painPoints.map((p) => typeof p === "string" ? p : p.pain_point || "");
       const useCaseMatch = memberUseCases.filter((uc: string) =>
-        painPoints.some((p) => p.toLowerCase().includes(uc.toLowerCase().split(" ")[0]))
+        painPointTexts.some((p) => p.toLowerCase().includes(uc.toLowerCase().split(" ")[0]))
       ).length;
 
       const score = (techOverlap * 0.35) + (industryMatch * 0.3) + (useCaseMatch * 0.2) + (member.description ? 0.15 : 0);
@@ -90,19 +156,44 @@ Deno.serve(async (req) => {
       return { member, score };
     });
 
-    // Sort and take top 6
+    // Sort and take top 8 candidates for Claude to evaluate (gives Claude room to rerank)
     scored.sort((a, b) => b.score - a.score);
-    const top6 = scored.slice(0, 6);
+    const topCandidates = scored.slice(0, 8);
 
-    // Generate rationales via Claude
-    const matchSummaries = top6.map((m, i) => ({
-      rank: i + 1,
-      name: m.member.name,
-      description: m.member.description || "No description available",
-      technologies: (m.member.technologies as string[]) || [],
-      industry_verticals: (m.member.industry_verticals as string[]) || [],
-      score: m.score,
-    }));
+    // Format prospect data for the prompt
+    const gapTexts = gaps.map((g) => typeof g === "string" ? g : (g as { opportunity?: string; gap?: string }).opportunity || (g as { gap?: string }).gap || "");
+    const painPointTexts = painPoints.map((p) => typeof p === "string" ? p : (p as { pain_point?: string }).pain_point || "");
+    const goalTexts = (analysis.strategic_goals as Array<{ goal?: string }> || []).map((g) => g.goal || "");
+
+    // Format member data for the prompt
+    const memberDataFormatted = topCandidates.map((m) => {
+      const member = m.member;
+      return `- **${member.name}** (ID: ${member.id})
+  Tier: ${member.membership_tier || "Unknown"}
+  Description: ${member.description || "No description available"}
+  Technologies: ${((member.technologies as string[]) || []).join(", ") || "None listed"}
+  Industry Verticals: ${((member.industry_verticals as string[]) || []).join(", ") || "None listed"}
+  Use Cases: ${((member.use_cases as string[]) || []).join(", ") || "None listed"}
+  Pain Points: ${((member.pain_points as string[]) || []).join(", ") || "None listed"}
+  Collaboration Interests: ${((member.collaboration_interests as string[]) || []).join(", ") || "None listed"}`;
+    }).join("\n\n");
+
+    const userMessage = `### Prospect Company (from the innovation analysis)
+
+**Company:** ${analysis.company_name}
+**Industry:** ${analysis.industry || "Not specified"}
+**Confirmed Verticals:** ${(analysis.confirmed_verticals as string[] || []).join(", ") || "General"}
+**Overall Innovation Score:** ${analysis.overall_score} (${analysis.maturity_level})
+**Technologies Detected:** ${techNames.join(", ") || "None detected"}
+**Innovation Opportunities:** ${gapTexts.join("; ") || "None identified"}
+**Pain Points:** ${painPointTexts.join("; ") || "None identified"}
+**Strategic Goals:** ${goalTexts.join("; ") || "None identified"}
+
+### Pre-Selected Member Companies
+
+${memberDataFormatted}
+
+Generate match profiles for the top 6 members from this list. Return only the JSON array.`;
 
     const rationaleResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -113,66 +204,67 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 2048,
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
         messages: [
-          {
-            role: "user",
-            content: `For the company "${analysis.company_name}" (industry: ${analysis.industry}, technologies: ${techsDetected.join(", ")}, gaps: ${gaps.join(", ")}), generate match rationales for these Beacon members:
-
-${JSON.stringify(matchSummaries, null, 2)}
-
-Return ONLY a JSON array (no markdown):
-[
-  {
-    "rank": 1,
-    "match_category": "Technology Partner|Industry Peer|Service Provider|Domain Expert",
-    "match_rationale": "2-3 sentence explanation of why this is a good match",
-    "shared_themes": ["theme1", "theme2"],
-    "collaboration_idea": "One paragraph describing a potential collaboration"
-  }
-]`,
-          },
+          { role: "user", content: userMessage },
         ],
       }),
     });
 
     const rationaleResult = await rationaleResponse.json();
-    let rationales: Array<{
+    let matchProfiles: Array<{
       rank: number;
+      matched_account_id: string;
+      match_score: number;
       match_category: string;
-      match_rationale: string;
-      shared_themes: string[];
-      collaboration_idea: string;
+      why_this_match: string;
+      member_expertise: string[];
+      conversation_starter: string;
+      shared_sectors: string[];
+      teaser_text: string;
     }> = [];
 
     for (const block of rationaleResult.content || []) {
       if (block.type === "text") {
         try {
           const match = block.text.match(/\[[\s\S]*\]/);
-          if (match) rationales = JSON.parse(match[0]);
+          if (match) matchProfiles = JSON.parse(match[0]);
         } catch {
-          // Fallback — empty rationales
+          // Fallback — empty profiles
         }
       }
     }
 
-    // Insert matches
-    const matchRows = top6.map((m, i) => {
-      const rationale = rationales.find((r) => r.rank === i + 1) || {};
+    // Build match rows with v2 fields
+    const matchRows = matchProfiles.slice(0, 6).map((profile, i) => {
+      // Find the member to get account details
+      const memberEntry = topCandidates.find((m) => m.member.id === profile.matched_account_id);
+      const member = memberEntry?.member;
+
       return {
         analysis_id,
-        matched_account_id: m.member.id,
-        match_rank: i + 1,
-        match_score: Math.min(m.score / 2, 0.99), // Normalize to 0-1
-        match_rationale: (rationale as { match_rationale?: string }).match_rationale || null,
-        match_category: (rationale as { match_category?: string }).match_category || "Technology Partner",
-        shared_themes: (rationale as { shared_themes?: string[] }).shared_themes || [],
-        collaboration_idea: (rationale as { collaboration_idea?: string }).collaboration_idea || null,
+        matched_account_id: profile.matched_account_id,
+        match_rank: profile.rank || (i + 1),
+        match_score: profile.match_score || 0.5,
+        match_rationale: profile.why_this_match || null,
+        match_category: profile.match_category || "Technology Partner",
+        shared_themes: profile.shared_sectors || [],
         is_visible: i < 2,
+        account_name: member?.name || null,
+        account_website: null, // Not available in the accounts query
+        account_description: member?.description || null,
+        match_details: {
+          member_expertise: profile.member_expertise || [],
+          conversation_starter: profile.conversation_starter || null,
+          teaser_text: profile.teaser_text || null,
+        },
       };
     });
 
-    await innovationClient.from("ecosystem_matches").insert(matchRows);
+    if (matchRows.length > 0) {
+      await innovationClient.from("ecosystem_matches").insert(matchRows);
+    }
 
     return new Response(
       JSON.stringify({ success: true, matches: matchRows.length }),

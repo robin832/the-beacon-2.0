@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { trackEvent, setupScrollTracking, trackTimeOnPage } from '@/lib/tracking';
-import { Analysis, MaturityDimension, EcosystemMatch } from '@/lib/types';
+import { Analysis, MaturityDimension, InnovationOpportunity, TechnologyDetected, AnalysisSource } from '@/lib/types';
 import PageTransition from '@/components/ui/PageTransition';
 import ReportHero from '@/components/report/ReportHero';
 import SurprisingInsight from '@/components/report/SurprisingInsight';
@@ -14,9 +14,8 @@ import MaturityBreakdown from '@/components/report/MaturityBreakdown';
 import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
 import TechTag from '@/components/ui/TechTag';
-import EcosystemTeaser from '@/components/report/EcosystemTeaser';
-import RecommendedServices from '@/components/report/RecommendedServices';
 import QuickWin from '@/components/report/QuickWin';
+import RecommendedServices from '@/components/report/RecommendedServices';
 import RatingAndCTA from '@/components/report/RatingAndCTA';
 import Footer from '@/components/layout/Footer';
 
@@ -26,19 +25,16 @@ export default function ReportPage() {
 
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [dimensions, setDimensions] = useState<MaturityDimension[]>([]);
-  const [matches, setMatches] = useState<EcosystemMatch[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const [analysisRes, dimensionsRes, matchesRes] = await Promise.all([
+      const [analysisRes, dimensionsRes] = await Promise.all([
         supabase.from('analyses').select('*').eq('id', analysisId).single(),
         supabase.from('maturity_dimensions').select('*').eq('analysis_id', analysisId).order('weight', { ascending: false }),
-        supabase.from('ecosystem_matches').select('*').eq('analysis_id', analysisId).order('match_rank', { ascending: true }),
       ]);
       if (analysisRes.data) setAnalysis(analysisRes.data as Analysis);
       if (dimensionsRes.data) setDimensions(dimensionsRes.data as MaturityDimension[]);
-      if (matchesRes.data) setMatches(matchesRes.data as EcosystemMatch[]);
       setLoading(false);
     }
     load();
@@ -55,34 +51,55 @@ export default function ReportPage() {
     return <PageTransition message="Building your opportunity map" submessage="Preparing your personalized innovation insights..." />;
   }
 
-  const fullJson = analysis.full_analysis_json as Record<string, unknown> | null;
-  const dataConfidenceExplanation = fullJson?.data_confidence_explanation as string | undefined;
+  // Parse opportunities from innovation_gaps (v2 uses innovation_opportunities stored in same column)
+  const opportunities: InnovationOpportunity[] = (analysis.innovation_gaps || []).map((g) => {
+    if (typeof g === 'string') return { opportunity: g, explanation: '', priority: 'medium', gap: g };
+    return {
+      opportunity: (g as InnovationOpportunity).opportunity || (g as InnovationOpportunity).gap || '',
+      explanation: (g as InnovationOpportunity).explanation || '',
+      priority: (g as InnovationOpportunity).priority || 'medium',
+      quick_win: (g as InnovationOpportunity).quick_win,
+      beacon_connection: (g as InnovationOpportunity).beacon_connection,
+      gap: (g as InnovationOpportunity).gap,
+    };
+  });
 
-  // Parse gaps as opportunity areas
-  const opportunities = (analysis.innovation_gaps || []).map((g) =>
-    typeof g === 'string' ? { gap: g, explanation: '', priority: 'medium' } : g
-  );
   const painPoints = (analysis.pain_points_detected || []).map((p) =>
     typeof p === 'string' ? { pain_point: p, explanation: '' } : p
   );
 
+  // Parse technologies — handle both string[] and object[] formats
+  const technologies: TechnologyDetected[] = (analysis.technologies_detected || []).map((t) =>
+    typeof t === 'string' ? { technology: t } : t as TechnologyDetected
+  );
+
+  // Sources
+  const sources: AnalysisSource[] = analysis.sources || [];
+
+  // Ecosystem match count for teaser
+  const matchTeaserLink = `/tryout/${analysisId}`;
+
   return (
     <div className="min-h-screen">
-      {/* Section 1: Hero — Company × The Beacon, score de-emphasized */}
+      {/* Section 1: Hero — dark background */}
       <ReportHero analysis={analysis} />
 
-      {/* Section 2: What Surprised Us — bold insight card */}
+      {/* Section 2: What Surprised Us — white background */}
       <SurprisingInsight insight={analysis.surprising_insight} />
 
-      {/* Section 3: Industry Landscape — what's transforming their sector */}
-      <IndustryContext context={analysis.industry_context} industry={analysis.industry} />
+      {/* Section 3: Industry Landscape — light gray background */}
+      <IndustryContext
+        context={analysis.industry_context}
+        industry={analysis.industry}
+        landscape={analysis.industry_landscape}
+      />
 
-      {/* Section 4: Your Position — radar chart + dimension breakdown */}
-      <section className="bg-beacon-light-gray py-20 px-6">
+      {/* Section 4: Your Position — white background */}
+      <section className="bg-white py-20 px-6">
         <div className="max-w-5xl mx-auto">
           <div className="flex flex-wrap items-center gap-4 mb-4">
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-beacon-dark-teal">
-              Where {analysis.company_name} Stands
+              Where {analysis.company_name} Sits in This Landscape
             </h2>
             <Badge variant="cyan">AI-Analyzed</Badge>
           </div>
@@ -92,12 +109,12 @@ export default function ReportPage() {
             patent filings, partnerships, and industry publications.
           </p>
           {analysis.data_confidence && (
-            <div className="p-3 bg-white/60 rounded border border-beacon-border mb-12 inline-block">
+            <div className="p-3 bg-beacon-light-gray/60 rounded border border-beacon-border mb-12 inline-block">
               <span className="text-[10px] font-mono tracking-widest uppercase text-beacon-medium-gray">
                 Data confidence: {analysis.data_confidence}
               </span>
-              {dataConfidenceExplanation && (
-                <p className="text-xs text-beacon-medium-gray mt-1">{dataConfidenceExplanation}</p>
+              {analysis.data_confidence_explanation && (
+                <p className="text-xs text-beacon-medium-gray mt-1">{analysis.data_confidence_explanation}</p>
               )}
             </div>
           )}
@@ -110,103 +127,136 @@ export default function ReportPage() {
               <MaturityBreakdown dimensions={dimensions} />
             </div>
           )}
-
-          {/* Technologies + Active Projects — compact, under the dimensions */}
-          {(analysis.technologies_detected.length > 0 || analysis.active_projects.length > 0) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-12 pt-12 border-t border-beacon-border">
-              {analysis.technologies_detected.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-4">
-                    Technologies Detected
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {analysis.technologies_detected.map((tech, i) => (
-                      <TechTag key={i} label={tech} />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {analysis.active_projects.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-4">
-                    Active Projects
-                  </h3>
-                  <div className="space-y-3">
-                    {analysis.active_projects.map((project, i) => (
-                      <div key={i} className="flex items-start gap-3">
-                        <span className={`text-xs font-mono px-2 py-0.5 rounded mt-0.5 ${
-                          project.status === 'active' ? 'bg-green-100 text-green-700' :
-                          project.status === 'planned' ? 'bg-blue-100 text-blue-700' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>{project.status}</span>
-                        <div>
-                          <span className="text-sm font-medium text-beacon-dark-teal">{project.name}</span>
-                          {project.description && <p className="text-xs text-beacon-medium-gray mt-0.5">{project.description}</p>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </section>
 
-      {/* Section 5: Opportunity Areas — gaps reframed as opportunities */}
-      <section className="bg-white py-20 px-6">
+      {/* Section 5: Opportunity Areas — light gray background */}
+      <section className="bg-beacon-light-gray py-20 px-6">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-beacon-dark-teal mb-4">
-            Your Biggest Opportunities
+            Your Innovation Opportunities
           </h2>
           <p className="text-beacon-medium-gray mb-12 max-w-2xl">
             Based on {analysis.company_name}&apos;s profile and industry trends, these are the areas
             where you could gain the most ground.
           </p>
 
-          {/* Strategic Goals */}
-          {analysis.strategic_goals.length > 0 && (
+          {/* Opportunity Cards */}
+          {opportunities.length > 0 && (
+            <div className="space-y-4 mb-12">
+              {opportunities.map((opp, i) => (
+                <Card key={i} className="p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="font-bold text-beacon-dark-teal">{opp.opportunity || opp.gap}</h4>
+                        {opp.quick_win && (
+                          <span className="text-[10px] font-mono tracking-widest uppercase bg-beacon-cyan/10 text-beacon-cyan px-2 py-0.5 rounded">
+                            Quick Win
+                          </span>
+                        )}
+                      </div>
+                      {opp.explanation && (
+                        <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mb-2">{opp.explanation}</p>
+                      )}
+                      {opp.beacon_connection && (
+                        <p className="text-xs text-beacon-cyan mt-2">
+                          <span className="font-mono tracking-widest uppercase">Beacon:</span> {opp.beacon_connection}
+                        </p>
+                      )}
+                    </div>
+                    {opp.priority && (
+                      <span className={`text-[10px] font-mono tracking-widest uppercase px-2 py-1 rounded flex-shrink-0 ${
+                        opp.priority === 'high' ? 'bg-beacon-cyan/10 text-beacon-cyan' :
+                        opp.priority === 'medium' ? 'bg-yellow-50 text-yellow-700' :
+                        'bg-gray-50 text-gray-500'
+                      }`}>
+                        {opp.priority === 'high' ? 'high priority' : opp.priority === 'medium' ? 'medium' : 'explore'}
+                      </span>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Technologies detected — enriched tags */}
+          {technologies.length > 0 && (
             <div className="mb-12">
-              <h3 className="text-xl font-bold text-beacon-dark-teal mb-6 flex items-center gap-3">
-                <span className="w-8 h-8 rounded-full bg-beacon-cyan/10 flex items-center justify-center text-beacon-cyan text-sm font-bold">1</span>
-                Where You&apos;re Heading
+              <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-4">
+                Technologies Detected
               </h3>
-              <div className="space-y-4 ml-11">
-                {analysis.strategic_goals.map((goal, i) => (
-                  <Card key={i} className="p-6 border-l-4 border-l-beacon-cyan">
-                    <h4 className="font-bold text-beacon-dark-teal">{goal.goal}</h4>
-                    <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">{goal.relevance}</p>
-                  </Card>
+              <div className="flex flex-wrap gap-2">
+                {technologies.map((tech, i) => (
+                  <TechTag
+                    key={i}
+                    label={tech.technology}
+                    source={tech.source}
+                    context={tech.context}
+                  />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Opportunity Areas (was: Innovation Gaps) */}
-          {opportunities.length > 0 && (
-            <div className="mb-12">
-              <h3 className="text-xl font-bold text-beacon-dark-teal mb-6 flex items-center gap-3">
-                <span className="w-8 h-8 rounded-full bg-beacon-orange/10 flex items-center justify-center text-beacon-orange text-sm font-bold">2</span>
-                Opportunity Areas
+          {/* Strategic goals */}
+          {analysis.strategic_goals.length > 0 && (
+            <div>
+              <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-4">
+                Strategic Goals
               </h3>
-              <div className="space-y-4 ml-11">
-                {opportunities.map((gap, i) => (
-                  <Card key={i} className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-bold text-beacon-dark-teal">{gap.gap}</h4>
-                        {gap.explanation && (
-                          <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">{gap.explanation}</p>
-                        )}
+              <div className="space-y-3">
+                {analysis.strategic_goals.map((goal, i) => (
+                  <Card key={i} className="p-5 border-l-4 border-l-beacon-cyan">
+                    <h4 className="font-bold text-beacon-dark-teal text-sm">{goal.goal}</h4>
+                    <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">{goal.relevance}</p>
+                    {goal.source && (
+                      <span className="text-[10px] font-mono text-beacon-medium-gray mt-1 inline-block">[{goal.source}]</span>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Section 6: Recommended Next Steps — white background */}
+      <section className="bg-white py-20 px-6">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-beacon-dark-teal mb-8">
+            Your Recommended Next Steps
+          </h2>
+
+          {/* Quick Win prominently displayed */}
+          <QuickWin quickWin={analysis.quick_win} />
+
+          {/* Recommended Beacon offerings */}
+          {analysis.recommended_offerings && analysis.recommended_offerings.length > 0 && (
+            <div className="mt-12">
+              <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray mb-6">
+                Recommended Beacon Offerings
+              </h3>
+              {analysis.beacon_relevance && (
+                <p className="text-beacon-dark-teal/70 leading-relaxed mb-8 max-w-3xl">
+                  {analysis.beacon_relevance}
+                </p>
+              )}
+              <div className="space-y-4">
+                {analysis.recommended_offerings.map((offering, i) => (
+                  <Card key={i} className="p-6" hover>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        {i === 0 && <Badge variant="default" className="flex-shrink-0">Best Match</Badge>}
+                        <div>
+                          <h4 className="text-lg font-bold text-beacon-dark-teal">{offering.offering}</h4>
+                          <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">
+                            {offering.match_reason}
+                          </p>
+                        </div>
                       </div>
-                      {gap.priority && (
-                        <span className={`text-[10px] font-mono tracking-widest uppercase px-2 py-1 rounded ml-4 flex-shrink-0 ${
-                          gap.priority === 'high' ? 'bg-beacon-cyan/10 text-beacon-cyan' :
-                          gap.priority === 'medium' ? 'bg-yellow-50 text-yellow-700' :
-                          'bg-gray-50 text-gray-500'
-                        }`}>
-                          {gap.priority === 'high' ? 'high impact' : gap.priority === 'medium' ? 'medium impact' : 'explore'}
-                        </span>
+                      {offering.price && (
+                        <span className="text-sm font-mono text-beacon-dark-teal/50 flex-shrink-0">{offering.price}</span>
                       )}
                     </div>
                   </Card>
@@ -215,58 +265,109 @@ export default function ReportPage() {
             </div>
           )}
 
-          {/* Untapped Potential (was: Pain Points) */}
-          {painPoints.length > 0 && (
-            <div className="mb-12">
-              <h3 className="text-xl font-bold text-beacon-dark-teal mb-6 flex items-center gap-3">
-                <span className="w-8 h-8 rounded-full bg-beacon-dark-teal/10 flex items-center justify-center text-beacon-dark-teal text-sm font-bold">3</span>
-                Untapped Potential
-              </h3>
-              <div className="space-y-4 ml-11">
-                {painPoints.map((p, i) => (
-                  <Card key={i} className="p-6">
-                    <h4 className="font-bold text-beacon-dark-teal">{p.pain_point}</h4>
-                    {p.explanation && (
-                      <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">{p.explanation}</p>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Quick Win */}
-          <QuickWin quickWin={analysis.quick_win} />
+          {/* Ecosystem teaser */}
+          <div className="mt-12 p-6 bg-beacon-light-gray rounded-lg border border-beacon-border">
+            <p className="text-beacon-dark-teal/70 leading-relaxed">
+              We&apos;ve identified companies in The Beacon ecosystem that could help you act on these opportunities.
+            </p>
+            <a
+              href={matchTeaserLink}
+              className="inline-flex items-center mt-4 text-sm font-bold text-beacon-cyan hover:text-beacon-dark-teal transition-colors"
+            >
+              See your ecosystem matches &rarr;
+            </a>
+          </div>
         </div>
       </section>
 
-      {/* Section 6: Your Ecosystem — matches teased mid-report */}
-      <EcosystemTeaser matches={matches} companyName={analysis.company_name} />
+      {/* Section 7: Sources & Confidence — light gray, subtle */}
+      {(sources.length > 0 || analysis.data_confidence) && (
+        <SourcesSection sources={sources} confidence={analysis.data_confidence} explanation={analysis.data_confidence_explanation} />
+      )}
 
-      {/* Section 7: How The Beacon Can Help */}
-      <RecommendedServices
-        offerings={analysis.recommended_offerings}
-        beaconRelevance={analysis.beacon_relevance}
-      />
-
-      {/* Section 8: Key Takeaway */}
-      <section className="bg-white py-16 px-6">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold text-beacon-dark-teal mb-6 leading-tight">
-            {analysis.maturity_level === 'Innovation Pioneer' || analysis.maturity_level === 'Innovation Leader'
-              ? `${analysis.company_name} is already innovating. The Beacon can help you go further, faster — with the right partners by your side.`
-              : analysis.maturity_level === 'Innovation Active'
-              ? `${analysis.company_name} has solid foundations. The next step? Moving from active to strategic — and The Beacon ecosystem is built for exactly that.`
-              : `Every innovation leader started somewhere. The Beacon gives ${analysis.company_name} the ecosystem, expertise, and connections to accelerate.`
-            }
-          </h2>
-        </div>
-      </section>
-
-      {/* Section 9: Rating → Tryout */}
+      {/* Section 8: CTA — Rating + Contact */}
       <RatingAndCTA analysisId={analysisId} companyName={analysis.company_name} />
 
       <Footer />
     </div>
+  );
+}
+
+function SourcesSection({ sources, confidence, explanation }: {
+  sources: AnalysisSource[];
+  confidence: string | null;
+  explanation: string | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <section className="bg-beacon-light-gray py-12 px-6">
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray">
+            Sources & Data Confidence
+          </h3>
+          {confidence && (
+            <span className={`text-[10px] font-mono tracking-widest uppercase px-2 py-1 rounded ${
+              confidence === 'high' ? 'bg-green-50 text-green-700' :
+              confidence === 'medium' ? 'bg-yellow-50 text-yellow-700' :
+              'bg-red-50 text-red-600'
+            }`}>
+              {confidence} confidence
+            </span>
+          )}
+        </div>
+
+        {explanation && (
+          <p className="text-sm text-beacon-dark-teal/60 leading-relaxed mb-4">{explanation}</p>
+        )}
+
+        {sources.length > 0 && (
+          <>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs font-mono tracking-widest uppercase text-beacon-cyan hover:text-beacon-dark-teal transition-colors"
+            >
+              {expanded ? 'Hide sources' : `Show ${sources.length} sources used`}
+            </button>
+
+            {expanded && (
+              <div className="mt-4 space-y-2">
+                {sources.map((source) => (
+                  <div key={source.id} className="flex items-start gap-3 text-sm">
+                    <span className="text-[10px] font-mono text-beacon-medium-gray bg-beacon-border/50 px-1.5 py-0.5 rounded flex-shrink-0">
+                      {source.id}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-beacon-dark-teal/70">{source.title}</span>
+                      {source.url && (
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-xs text-beacon-cyan hover:underline truncate"
+                        >
+                          {source.url}
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {source.date && (
+                        <span className="text-[10px] font-mono text-beacon-medium-gray">{source.date}</span>
+                      )}
+                      {source.type && (
+                        <span className="text-[10px] font-mono text-beacon-medium-gray bg-beacon-border/30 px-1.5 py-0.5 rounded">
+                          {source.type.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
   );
 }

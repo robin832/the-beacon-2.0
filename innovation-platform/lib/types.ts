@@ -18,17 +18,20 @@ export interface Analysis {
   company_type: string | null;
   overall_score: number | null;
   maturity_level: string | null;
-  technologies_detected: string[];
+  technologies_detected: TechnologyDetected[];
   strategic_goals: StrategicGoal[];
   active_projects: ActiveProject[];
-  innovation_gaps: InnovationGap[];
+  innovation_gaps: InnovationOpportunity[];
   pain_points_detected: PainPoint[];
   beacon_relevance: string | null;
   recommended_offerings: RecommendedOffering[];
   industry_context: string | null;
+  industry_landscape: IndustryLandscape | null;
   data_confidence: string | null;
+  data_confidence_explanation: string | null;
   surprising_insight: string | null;
   quick_win: QuickWin | null;
+  sources: AnalysisSource[];
   analysis_status: string;
   full_analysis_json: Record<string, unknown> | null;
   account_id: string | null;
@@ -71,6 +74,13 @@ export interface EcosystemMatch {
   account_description?: string;
   account_industry?: string;
   account_technologies?: string[];
+  match_details?: MatchDetails;
+}
+
+export interface MatchDetails {
+  member_expertise: string[];
+  conversation_starter: string | null;
+  teaser_text: string | null;
 }
 
 export interface Interaction {
@@ -100,26 +110,39 @@ export interface Lead {
   created_at?: string;
 }
 
+export interface TechnologyDetected {
+  technology: string;
+  source?: string;
+  context?: string;
+}
+
 export interface StrategicGoal {
   goal: string;
   relevance: string;
+  source?: string;
 }
 
 export interface ActiveProject {
   name: string;
   status: string;
   description: string;
+  source?: string;
 }
 
-export interface InnovationGap {
-  gap: string;
+export interface InnovationOpportunity {
+  opportunity: string;
   explanation: string;
   priority: string;
+  quick_win?: boolean;
+  beacon_connection?: string;
+  // Backwards compat with old gap format
+  gap?: string;
 }
 
 export interface PainPoint {
   pain_point: string;
   explanation: string;
+  source?: string;
 }
 
 export interface RecommendedOffering {
@@ -131,7 +154,22 @@ export interface RecommendedOffering {
 export interface QuickWin {
   action: string;
   why: string;
-  beacon_connection: string;
+  beacon_link?: string;
+  beacon_connection?: string;
+}
+
+export interface IndustryLandscape {
+  current_trends: string;
+  competitive_position: string;
+  emerging_opportunities: string;
+}
+
+export interface AnalysisSource {
+  id: string;
+  title: string;
+  url: string;
+  date: string;
+  type: string;
 }
 
 export interface CompanyCandidate {
@@ -143,6 +181,7 @@ export interface CompanyCandidate {
   employee_range: string | null;
   founded: number | null;
   confidence: number;
+  source: string | null;
   suggested_verticals?: string[];
 }
 

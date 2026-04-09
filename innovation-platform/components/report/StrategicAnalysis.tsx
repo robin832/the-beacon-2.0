@@ -119,7 +119,7 @@ export default function StrategicAnalysis({ analysis }: StrategicAnalysisProps) 
               </h3>
               <div className="flex flex-wrap gap-2">
                 {analysis.technologies_detected.map((tech, i) => (
-                  <TechTag key={i} label={tech} />
+                  <TechTag key={i} label={typeof tech === 'string' ? tech : tech.technology} source={typeof tech === 'string' ? undefined : tech.source} context={typeof tech === 'string' ? undefined : tech.context} />
                 ))}
               </div>
             </div>

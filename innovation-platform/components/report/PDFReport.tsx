@@ -64,9 +64,11 @@ const s = StyleSheet.create({
 function InnovationReport({ analysis, dimensions }: { analysis: Analysis; dimensions: MaturityDimension[] }) {
   const date = new Date(analysis.analyzed_at || analysis.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const gaps = (analysis.innovation_gaps || []).map((g) =>
-    typeof g === 'string' ? { gap: g, explanation: '', priority: 'medium' } : g
-  );
+  const gaps = (analysis.innovation_gaps || []).map((g) => {
+    if (typeof g === 'string') return { gap: g, explanation: '', priority: 'medium' };
+    const opp = g as { opportunity?: string; gap?: string; explanation?: string; priority?: string };
+    return { gap: opp.opportunity || opp.gap || '', explanation: opp.explanation || '', priority: opp.priority || 'medium' };
+  });
 
   return (
     <Document>
@@ -143,7 +145,7 @@ function InnovationReport({ analysis, dimensions }: { analysis: Analysis; dimens
             <Text style={s.sectionTitle}>Technologies Detected</Text>
             <View style={s.tagRow}>
               {analysis.technologies_detected.map((tech, i) => (
-                <View key={i} style={s.tag}><Text style={s.tagText}>{tech}</Text></View>
+                <View key={i} style={s.tag}><Text style={s.tagText}>{typeof tech === 'string' ? tech : tech.technology}</Text></View>
               ))}
             </View>
           </>

@@ -171,6 +171,12 @@ export default function ConfirmPage() {
                   </div>
                 )}
               </div>
+              {primary.source && (
+                <div>
+                  <span className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray">Identified via</span>
+                  <p className="text-beacon-dark-teal text-sm">{primary.source}</p>
+                </div>
+              )}
             </div>
           </Card>
 
