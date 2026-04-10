@@ -132,13 +132,11 @@ Many Beacon members have limited data in the database. When data is sparse:
 
 ## Ranking
 
-Order matches from strongest (rank 1) to weakest. Return up to 8 ranked profiles; the platform will pick the final 6 to display.
+Order matches from strongest (rank 1) to weakest. Return up to 9 ranked profiles; the platform will pick the final 6 to display (3 visible, 3 locked).
 
-The visible (top 2) cards will show **one startup/scaleup** AND **one corporate/SME** to give the prospect a balanced view of the ecosystem. Each candidate is labeled with its membership tier:
-- **Startup/Scaleup tiers:** Tech Starter, Tech Accelerator
-- **Corporate/SME tiers:** Tech Champion, Industry Engage, Industry Strategic, Private Office, Office
+The visible (top 3) cards will show **one Tech Starter**, **one Tech Accelerator**, and **one Tech Champion** — one member from each of The Beacon's three tech membership tiers. This gives the prospect a balanced view across startups, scaleups, and established players.
 
-Make sure your top-ranked startup AND your top-ranked corporate are BOTH compelling — write equally strong rationales for both, since one of each will be shown.
+Each candidate is labeled with its membership tier in the member data. Write equally strong rationales for the best candidate in EACH of these three tiers, since one from each will be shown visibly.
 
 Ranking criteria (in priority order):
 1. Direct relevance to the prospect's highest-priority opportunity/gap

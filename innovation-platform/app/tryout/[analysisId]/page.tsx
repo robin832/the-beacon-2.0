@@ -59,8 +59,8 @@ export default function TryoutPage() {
     return <PageTransition message="Preparing your introductions" submessage="Loading your ecosystem matches..." />;
   }
 
-  const visibleMatches = matches.filter((m) => m.is_visible).slice(0, 2);
-  const lockedMatches = matches.filter((m) => !m.is_visible).slice(0, 4);
+  const visibleMatches = matches.filter((m) => m.is_visible).slice(0, 3);
+  const lockedMatches = matches.filter((m) => !m.is_visible).slice(0, 3);
 
   return (
     <div className="relative min-h-screen bg-beacon-light-gray flex flex-col">
