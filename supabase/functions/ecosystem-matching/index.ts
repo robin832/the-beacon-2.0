@@ -152,6 +152,17 @@ Deno.serve(async (req) => {
 
 ${memberDataFormatted}
 
+## Research Instructions for Top Members
+
+For the top 3-4 member companies (those you expect to rank highest), do a quick web search:
+- Search: "{member_name}" Belgium to find their website, products, services, or recent news
+- Find: specific solutions, case studies, or press releases relevant to the prospect's needs
+- Extract: one concrete URL from the member's website showing what they offer
+
+Use these findings to write richer \`why_this_match\` and \`member_expertise\` fields. Add an \`evidence_url\` and \`evidence_title\` to match_evidence entries when you find a relevant page on the member's site. Only include URLs you actually retrieved during this session — never guess or construct a URL.
+
+For lower-ranked members, use only the database data provided — no web search needed.
+
 Generate match profiles for the top 6 members from this list. Return only the JSON array.`;
 
     const rationaleResponse = await fetch("https://api.anthropic.com/v1/messages", {
@@ -163,8 +174,16 @@ Generate match profiles for the top 6 members from this list. Return only the JS
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
+        max_tokens: 6000,
         system: SYSTEM_PROMPT,
+        tools: [
+          {
+            type: "web_search_20250305",
+            name: "web_search",
+            // ~1 search per top member to find a real evidence URL
+            max_uses: 6,
+          },
+        ],
         messages: [
           { role: "user", content: userMessage },
         ],
@@ -172,28 +191,60 @@ Generate match profiles for the top 6 members from this list. Return only the JS
     });
 
     const rationaleResult = await rationaleResponse.json();
+
+    if (rationaleResult.error || rationaleResult.type === "error") {
+      console.error("Claude API error:", JSON.stringify(rationaleResult));
+      return new Response(
+        JSON.stringify({ error: "Claude API error", detail: rationaleResult.error?.message || JSON.stringify(rationaleResult) }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let outputText = "";
+    for (const block of rationaleResult.content || []) {
+      if (block.type === "text") outputText += block.text;
+    }
+
     let matchProfiles: Array<{
       rank: number;
       matched_account_id: string;
       match_score: number;
       match_category: string;
       why_this_match: string;
-      match_evidence: Array<{ type: string; prospect_signal: string; member_signal: string; strength: string }>;
+      match_evidence: Array<{
+        type: string;
+        prospect_signal: string;
+        member_signal: string;
+        strength: string;
+        evidence_url?: string;
+        evidence_title?: string;
+      }>;
       member_expertise: string[];
       conversation_starter: string;
       shared_sectors: string[];
       teaser_text: string;
     }> = [];
 
-    for (const block of rationaleResult.content || []) {
-      if (block.type === "text") {
-        try {
-          const match = block.text.match(/\[[\s\S]*\]/);
-          if (match) matchProfiles = JSON.parse(match[0]);
-        } catch {
-          // Fallback — empty profiles
+    // Robust parser: strip markdown fences, find balanced array brackets
+    try {
+      let jsonText = outputText;
+      const fenceMatch = outputText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonText = fenceMatch[1].trim();
+
+      const startIdx = jsonText.indexOf("[");
+      if (startIdx !== -1) {
+        let depth = 0;
+        let endIdx = -1;
+        for (let i = startIdx; i < jsonText.length; i++) {
+          if (jsonText[i] === "[") depth++;
+          else if (jsonText[i] === "]") { depth--; if (depth === 0) { endIdx = i; break; } }
+        }
+        if (endIdx !== -1) {
+          matchProfiles = JSON.parse(jsonText.substring(startIdx, endIdx + 1));
         }
       }
+    } catch (parseErr) {
+      console.error("Failed to parse match profiles:", parseErr, "Raw (first 500):", outputText.substring(0, 500));
     }
 
     // Build profiles enriched with tier info

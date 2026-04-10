@@ -210,13 +210,17 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 6000,
+        max_tokens: 8000,
         system: SYSTEM_PROMPT,
         tools: [
           {
             type: "web_search_20250305",
             name: "web_search",
-            max_uses: 3,
+            // 8 searches: ~3 company-specific, ~2 industry context, ~1 competitive,
+            // ~2 for real-world example case studies. Big quality lift over 3.
+            // History: started at 10, raised to 15, dropped to 3 during a 20KB prompt
+            // timeout incident. Prompt is now ~8KB so we can comfortably go higher again.
+            max_uses: 8,
           },
         ],
         messages: [
@@ -383,7 +387,8 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       .update({ analysis_status: "complete" })
       .eq("id", analysis_id);
 
-    // Log source usage into source_quality for the learning loop
+    // Log source usage into source_quality for the learning loop.
+    // We use direct .from() operations instead of RPC to avoid PostgREST schema-routing issues.
     try {
       const usedSources = (analysisData.sources || []) as Array<{ url?: string; verified?: boolean }>;
       const resolvedIndustry = analysisData.industry || industry || "General";
@@ -393,12 +398,41 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
         try {
           domain = new URL(src.url).hostname.replace(/^www\./, "");
         } catch { continue; }
-        await supabase.rpc("update_source_usage", {
-          p_domain: domain,
-          p_url: src.url,
-          p_vertical: resolvedIndustry,
-          p_verified: src.verified !== false, // treat as verified unless explicitly false
-        });
+
+        const verified = src.verified !== false;
+        // Try to fetch the existing row
+        const { data: existingRow } = await supabase
+          .from("source_quality")
+          .select("id, times_used, times_verified, times_broken")
+          .eq("source_domain", domain)
+          .eq("industry_vertical", resolvedIndustry)
+          .maybeSingle();
+
+        if (existingRow) {
+          await supabase
+            .from("source_quality")
+            .update({
+              times_used: (existingRow.times_used || 0) + 1,
+              times_verified: (existingRow.times_verified || 0) + (verified ? 1 : 0),
+              times_broken: (existingRow.times_broken || 0) + (verified ? 0 : 1),
+              source_url: src.url,
+              last_used_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingRow.id);
+        } else {
+          await supabase
+            .from("source_quality")
+            .insert({
+              source_domain: domain,
+              source_url: src.url,
+              industry_vertical: resolvedIndustry,
+              times_used: 1,
+              times_verified: verified ? 1 : 0,
+              times_broken: verified ? 0 : 1,
+              last_used_at: new Date().toISOString(),
+            });
+        }
       }
     } catch (srcError) {
       console.error("Source usage logging failed (non-critical):", srcError);

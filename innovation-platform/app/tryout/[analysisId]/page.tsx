@@ -19,6 +19,16 @@ const facilityImages = [
   { src: '/facilities/terrace.jpeg', alt: 'Rooftop terrace', label: 'Terrace' },
 ];
 
+function isValidHttpUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export default function TryoutPage() {
   const params = useParams();
   const analysisId = params.analysisId as string;
@@ -247,7 +257,7 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
 
   if (locked) {
     return (
-      <div className="border-2 border-beacon-border rounded-lg relative overflow-hidden bg-white h-[300px]">
+      <div className="border-2 border-beacon-border rounded-lg relative overflow-hidden bg-white h-[340px]">
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-5 text-center">
           {match.match_category && (
             <Badge variant="cyan" className="mb-3">{match.match_category}</Badge>
@@ -276,7 +286,7 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
   const evidence: MatchEvidence[] = (match.match_evidence as MatchEvidence[]) || [];
 
   return (
-    <Card className="p-5 border-beacon-cyan/30 flex flex-col h-[300px]">
+    <Card className="p-5 border-beacon-cyan/30 flex flex-col h-[340px]">
       <div className="flex items-start justify-between mb-3">
         <h3 className="text-lg font-bold text-beacon-dark-teal leading-tight">
           {match.account_name || 'Beacon Member'}
@@ -291,14 +301,26 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
         </p>
       )}
 
-      {/* Match evidence: Your signal → Their strength */}
+      {/* Match evidence: Your signal → Their strength (with optional evidence link) */}
       {evidence.length > 0 && (
         <div className="space-y-2 mb-3 flex-1">
           {evidence.slice(0, 2).map((ev, i) => (
-            <div key={i} className="flex items-start gap-2 text-[11px]">
-              <span className="text-beacon-dark-teal/50 flex-1 truncate">{ev.prospect_signal}</span>
-              <span className="text-beacon-cyan flex-shrink-0">&rarr;</span>
-              <span className="text-beacon-dark-teal/70 flex-1 truncate font-medium">{ev.member_signal}</span>
+            <div key={i} className="text-[11px]">
+              <div className="flex items-start gap-2">
+                <span className="text-beacon-dark-teal/50 flex-1 truncate">{ev.prospect_signal}</span>
+                <span className="text-beacon-cyan flex-shrink-0">&rarr;</span>
+                <span className="text-beacon-dark-teal/70 flex-1 truncate font-medium">{ev.member_signal}</span>
+              </div>
+              {isValidHttpUrl(ev.evidence_url) && (
+                <a
+                  href={ev.evidence_url!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block ml-3 mt-1 text-[10px] text-beacon-cyan hover:underline truncate"
+                >
+                  See their {ev.evidence_title || 'solution'} &rarr;
+                </a>
+              )}
             </div>
           ))}
         </div>

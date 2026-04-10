@@ -63,16 +63,20 @@ Bad example: "Both companies operate in the logistics sector and share interests
 
 **4. match_evidence** (array of 2-3 objects) — The specific signals that led to this match
 
-Each item shows a clear connection between the prospect's needs and the member's capabilities:
+Each item shows a clear connection between the prospect's needs and the member's capabilities. When you found a relevant page on the member's website during web search, include `evidence_url` and `evidence_title`:
 
 ```json
 {
   "type": "technology_overlap|gap_addressal|industry_relevance|pain_point_match",
   "prospect_signal": "What was detected in the prospect's analysis",
   "member_signal": "What this member brings",
-  "strength": "strong|moderate|weak"
+  "strength": "strong|moderate|weak",
+  "evidence_url": "https://member-site.com/solutions/...",  // optional, only if found via search
+  "evidence_title": "Page title or solution name"           // optional, only if evidence_url present
 }
 ```
+
+**evidence_url rule (STRICT):** Only include a URL if you actually retrieved it via web search in this session. Never construct or guess a URL. If you don't have one, omit both `evidence_url` and `evidence_title`.
 
 Example:
 ```json
@@ -162,7 +166,9 @@ Return ONLY a valid JSON array, ordered by rank (strongest first). No markdown, 
         "type": "technology_overlap",
         "prospect_signal": "What was detected in the prospect's analysis",
         "member_signal": "What this member brings",
-        "strength": "strong"
+        "strength": "strong",
+        "evidence_url": "https://member-site.com/solutions/iot-platform",
+        "evidence_title": "Industrial IoT Platform"
       }
     ],
     "member_expertise": [

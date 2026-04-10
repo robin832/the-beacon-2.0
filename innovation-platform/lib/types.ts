@@ -101,6 +101,8 @@ export interface MatchEvidence {
   prospect_signal: string;
   member_signal: string;
   strength: 'strong' | 'moderate' | 'weak' | string;
+  evidence_url?: string;
+  evidence_title?: string;
 }
 
 export interface Interaction {

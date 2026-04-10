@@ -83,6 +83,7 @@ Deno.serve(async (req) => {
     // Learning loop: if user provided a rating, update source quality for every source
     // used in the parent analysis. If the feedback text mentions a specific source
     // domain or title, boost/penalize that source directly.
+    // We use direct .from() reads/updates instead of RPC to avoid schema-routing issues.
     if (rating && rating >= 1 && rating <= 5) {
       try {
         const { data: analysis } = await supabase
@@ -103,26 +104,50 @@ Deno.serve(async (req) => {
               domain = new URL(src.url).hostname.replace(/^www\./, "");
             } catch { continue; }
 
-            // Update average rating for this source
-            await supabase.rpc("update_source_rating", {
-              p_domain: domain,
-              p_vertical: vertical,
-              p_rating: rating,
-            });
+            // Fetch the existing row to recompute the quality score
+            const { data: row } = await supabase
+              .from("source_quality")
+              .select("id, total_report_rating, reports_rated, times_used, times_verified, positive_feedback_count, negative_feedback_count")
+              .eq("source_domain", domain)
+              .eq("industry_vertical", vertical)
+              .maybeSingle();
 
-            // If feedback text mentions this source domain or title, adjust feedback count
+            if (!row) continue; // source wasn't logged on the analysis side, skip
+
             const titleLower = (src.title || "").toLowerCase();
             const mentioned = feedbackLower.length > 0 && (
               feedbackLower.includes(domain) ||
               (titleLower.length > 3 && feedbackLower.includes(titleLower))
             );
-            if (mentioned) {
-              await supabase.rpc("adjust_source_feedback", {
-                p_domain: domain,
-                p_vertical: vertical,
-                p_positive: rating >= 4,
-              });
-            }
+            const positive = mentioned && rating >= 4;
+            const negative = mentioned && rating < 4;
+
+            const newTotalRating = Number(row.total_report_rating || 0) + rating;
+            const newReportsRated = (row.reports_rated || 0) + 1;
+            const newPos = (row.positive_feedback_count || 0) + (positive ? 1 : 0);
+            const newNeg = (row.negative_feedback_count || 0) + (negative ? 1 : 0);
+
+            // Quality score: 40% avg rating + 30% verification rate + 30% feedback ratio
+            const avgRating = (newTotalRating / newReportsRated) / 5;
+            const verificationRate = row.times_used > 0
+              ? (row.times_verified || 0) / row.times_used
+              : 0.5;
+            const feedbackRatio = (newPos + newNeg) > 0
+              ? newPos / (newPos + newNeg)
+              : 0.5;
+            const qualityScore = (avgRating * 0.4) + (verificationRate * 0.3) + (feedbackRatio * 0.3);
+
+            await supabase
+              .from("source_quality")
+              .update({
+                total_report_rating: newTotalRating,
+                reports_rated: newReportsRated,
+                positive_feedback_count: newPos,
+                negative_feedback_count: newNeg,
+                quality_score: Math.round(qualityScore * 100) / 100,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", row.id);
           }
         }
       } catch (srcError) {
