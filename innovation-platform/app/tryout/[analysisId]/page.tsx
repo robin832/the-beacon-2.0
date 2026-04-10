@@ -250,73 +250,182 @@ export default function TryoutPage() {
   );
 }
 
+const CARD_HEIGHT = 'h-[520px]';
+
+function TierBadge({ tier, muted = false }: { tier: string | null | undefined; muted?: boolean }) {
+  if (!tier) return null;
+  const short = tier.replace(/^Tech\s+/i, '');
+  const base = 'text-[9px] font-mono tracking-widest uppercase px-2 py-0.5 rounded border';
+  if (muted) {
+    return (
+      <span className={`${base} bg-beacon-border/40 text-beacon-medium-gray border-beacon-border select-none`}>
+        <span className="blur-[3px]">{short}</span>
+      </span>
+    );
+  }
+  const variant =
+    tier.includes('Champion')
+      ? 'bg-beacon-dark-teal/5 text-beacon-dark-teal border-beacon-dark-teal/20'
+      : tier.includes('Accelerator')
+      ? 'bg-beacon-cyan/10 text-beacon-cyan border-beacon-cyan/30'
+      : 'bg-beacon-orange/10 text-beacon-orange border-beacon-orange/30';
+  return <span className={`${base} ${variant}`}>{short}</span>;
+}
+
+function EvidenceRow({
+  evidence,
+  memberBlurred = false,
+}: {
+  evidence: MatchEvidence;
+  memberBlurred?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-[1fr_auto_1fr] gap-1.5 items-stretch">
+      <div className="bg-beacon-light-gray rounded p-2 min-w-0">
+        <p className="text-[8px] font-mono tracking-widest uppercase text-beacon-medium-gray mb-1">
+          Your need
+        </p>
+        <p className="text-[10px] text-beacon-dark-teal/80 leading-tight line-clamp-3">
+          {evidence.prospect_signal}
+        </p>
+      </div>
+      <div className="flex items-center text-beacon-cyan text-sm px-0.5">&rarr;</div>
+      <div
+        className={`rounded p-2 min-w-0 ${
+          memberBlurred ? 'bg-beacon-border/40' : 'bg-beacon-cyan/5'
+        }`}
+      >
+        <p
+          className={`text-[8px] font-mono tracking-widest uppercase mb-1 ${
+            memberBlurred ? 'text-beacon-medium-gray' : 'text-beacon-cyan'
+          }`}
+        >
+          Their capability
+        </p>
+        <p
+          className={`text-[10px] font-medium leading-tight line-clamp-3 ${
+            memberBlurred
+              ? 'text-beacon-dark-teal/40 blur-[4px] select-none'
+              : 'text-beacon-dark-teal'
+          }`}
+        >
+          {evidence.member_signal}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }) {
   const details: MatchDetails = (match.match_details as MatchDetails) || {};
   const teaserText = details.teaser_text || null;
+  const conversationStarter = details.conversation_starter || null;
+  const tier = details.membership_tier || null;
   const website = match.account_website;
+  const evidence: MatchEvidence[] = (match.match_evidence as MatchEvidence[]) || [];
 
   if (locked) {
+    const firstEvidence = evidence[0];
     return (
-      <div className="border-2 border-beacon-border rounded-lg relative overflow-hidden bg-white h-[340px]">
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-5 text-center">
-          {match.match_category && (
-            <Badge variant="cyan" className="mb-3">{match.match_category}</Badge>
-          )}
-          <svg className="w-6 h-6 text-beacon-dark-teal/20 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <Card className={`p-5 border-beacon-border flex flex-col ${CARD_HEIGHT} bg-white relative overflow-hidden`}>
+        {/* Top: category badge */}
+        <div className="flex items-start justify-between mb-3">
+          {match.match_category ? (
+            <Badge variant="cyan" className="text-[9px] flex-shrink-0">{match.match_category}</Badge>
+          ) : <span />}
+        </div>
+
+        {/* Blurred company name */}
+        <div className="h-5 w-2/3 bg-beacon-border rounded blur-sm mb-4 select-none" />
+
+        {/* One partial evidence row — prospect signal visible, capability blurred */}
+        {firstEvidence ? (
+          <div className="mb-5">
+            <EvidenceRow evidence={firstEvidence} memberBlurred />
+          </div>
+        ) : (
+          <div className="space-y-2 mb-5">
+            <div className="h-3 w-full bg-beacon-border/50 rounded" />
+            <div className="h-3 w-4/5 bg-beacon-border/50 rounded" />
+          </div>
+        )}
+
+        {/* Lock icon + teaser text */}
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-2">
+          <svg className="w-7 h-7 text-beacon-dark-teal/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
           {teaserText && (
-            <p className="text-xs text-beacon-dark-teal/50 leading-relaxed max-w-[180px]">{teaserText}</p>
+            <p className="text-xs text-beacon-dark-teal/50 leading-relaxed max-w-[220px]">
+              {teaserText}
+            </p>
           )}
-          <span className="text-[9px] font-mono tracking-widest uppercase text-beacon-dark-teal/30 mt-3">
-            Visit to unlock
-          </span>
         </div>
-        <div className="blur-md select-none p-5 opacity-20">
-          <div className="h-4 w-2/3 bg-beacon-border rounded mb-3" />
-          <div className="h-3 w-full bg-beacon-border/50 rounded mb-2" />
-          <div className="h-3 w-full bg-beacon-border/50 rounded mb-2" />
-          <div className="h-3 w-4/5 bg-beacon-border/50 rounded mb-3" />
-          <div className="h-3 w-2/3 bg-beacon-border/50 rounded" />
+
+        {/* Bottom: unlock CTA + blurred tier */}
+        <div className="mt-auto pt-3 border-t border-beacon-border">
+          <p className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan text-center mb-2">
+            Unlock by visiting The Beacon
+          </p>
+          <div className="flex justify-center">
+            <TierBadge tier={tier} muted />
+          </div>
         </div>
-      </div>
+      </Card>
     );
   }
 
-  const evidence: MatchEvidence[] = (match.match_evidence as MatchEvidence[]) || [];
+  const sharedSectors = (match.shared_themes || []).slice(0, 2);
 
   return (
-    <Card className="p-5 border-beacon-cyan/30 flex flex-col h-[340px]">
-      <div className="flex items-start justify-between mb-3">
+    <Card className={`p-5 border-beacon-cyan/30 flex flex-col ${CARD_HEIGHT}`}>
+      {/* Header: category + tier badges */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        {match.match_category ? (
+          <Badge variant="cyan" className="text-[9px] flex-shrink-0">{match.match_category}</Badge>
+        ) : <span />}
+        <TierBadge tier={tier} />
+      </div>
+
+      {/* Company name */}
+      <div className="flex items-start justify-between gap-2 mb-3">
         <h3 className="text-lg font-bold text-beacon-dark-teal leading-tight">
           {match.account_name || 'Beacon Member'}
         </h3>
-        {match.match_category && <Badge variant="cyan" className="text-[9px] flex-shrink-0">{match.match_category}</Badge>}
+        {website && (
+          <a
+            href={website.startsWith('http') ? website : `https://${website}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-beacon-cyan hover:text-beacon-dark-teal flex-shrink-0 mt-1"
+            title={website}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        )}
       </div>
 
-      {/* Why matched — use case focused rationale */}
+      {/* Rationale — "How they can help you" */}
       {match.match_rationale && (
-        <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mb-3 line-clamp-3">
+        <p className="text-xs text-beacon-dark-teal/70 leading-relaxed mb-3 line-clamp-3">
           {match.match_rationale}
         </p>
       )}
 
-      {/* Match evidence: Your signal → Their strength (with optional evidence link) */}
+      {/* Evidence rows — two-column visual cards */}
       {evidence.length > 0 && (
-        <div className="space-y-2 mb-3 flex-1">
+        <div className="space-y-2 mb-3">
           {evidence.slice(0, 2).map((ev, i) => (
-            <div key={i} className="text-[11px]">
-              <div className="flex items-start gap-2">
-                <span className="text-beacon-dark-teal/50 flex-1 truncate">{ev.prospect_signal}</span>
-                <span className="text-beacon-cyan flex-shrink-0">&rarr;</span>
-                <span className="text-beacon-dark-teal/70 flex-1 truncate font-medium">{ev.member_signal}</span>
-              </div>
+            <div key={i}>
+              <EvidenceRow evidence={ev} />
               {isValidHttpUrl(ev.evidence_url) && (
                 <a
                   href={ev.evidence_url!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block ml-3 mt-1 text-[10px] text-beacon-cyan hover:underline truncate"
+                  className="block mt-1 text-[9px] font-mono text-beacon-cyan hover:underline truncate"
                 >
                   See their {ev.evidence_title || 'solution'} &rarr;
                 </a>
@@ -326,17 +435,31 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
         </div>
       )}
 
-      <div className="mt-auto pt-3 border-t border-beacon-border">
-        {website && (
-          <a
-            href={website.startsWith('http') ? website : `https://${website}`}
-            target="_blank" rel="noopener noreferrer"
-            className="text-xs text-beacon-cyan hover:underline font-mono truncate block"
-          >
-            {website}
-          </a>
-        )}
-      </div>
+      {/* Conversation starter callout */}
+      {conversationStarter && (
+        <div className="mt-auto mb-3 bg-beacon-cyan/5 border-l-2 border-beacon-cyan rounded-r p-2.5">
+          <div className="flex items-start gap-1.5">
+            <span className="text-sm flex-shrink-0">&#x1F4AC;</span>
+            <p className="text-[10px] text-beacon-dark-teal/80 italic leading-snug">
+              &ldquo;{conversationStarter}&rdquo;
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom: sector tags */}
+      {sharedSectors.length > 0 && (
+        <div className={`${conversationStarter ? '' : 'mt-auto'} pt-3 border-t border-beacon-border flex items-center gap-1.5 flex-wrap`}>
+          {sharedSectors.map((s, i) => (
+            <span
+              key={i}
+              className="text-[9px] font-mono tracking-widest uppercase bg-beacon-light-gray text-beacon-dark-teal/60 px-2 py-0.5 rounded"
+            >
+              {s}
+            </span>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

@@ -15,6 +15,7 @@ import TechTag from '@/components/ui/TechTag';
 import QuickWin from '@/components/report/QuickWin';
 import { RichText } from '@/components/ui/SourceLink';
 import RatingAndCTA from '@/components/report/RatingAndCTA';
+import SourcesWidget from '@/components/report/SourcesWidget';
 import Footer from '@/components/layout/Footer';
 
 function isValidHttpUrl(url: string | null | undefined): boolean {
@@ -98,6 +99,13 @@ export default function ReportPage() {
       {/* Sticky navigation */}
       <StickyNav activeSection={activeSection} />
 
+      {/* Floating sources panel (fixed to right edge) */}
+      <SourcesWidget
+        sources={sources}
+        confidence={analysis.data_confidence}
+        explanation={analysis.data_confidence_explanation}
+      />
+
       {/* Section 1: Hero */}
       <div id="hero">
         <ReportHero analysis={analysis} />
@@ -105,7 +113,7 @@ export default function ReportPage() {
 
       {/* Section 2: What Stood Out */}
       <div id="standout">
-        <SurprisingInsight insight={analysis.surprising_insight} />
+        <SurprisingInsight insight={analysis.surprising_insight} sources={sources} />
       </div>
 
       {/* Section 3: Two-column — Industry Landscape + Strategic Goals */}
@@ -248,7 +256,9 @@ export default function ReportPage() {
                   Recommended Beacon Offerings
                 </h3>
                 {analysis.beacon_relevance && (
-                  <p className="text-beacon-dark-teal/70 leading-relaxed mb-6 max-w-3xl">{analysis.beacon_relevance}</p>
+                  <p className="text-beacon-dark-teal/70 leading-relaxed mb-6 max-w-3xl">
+                    <RichText text={analysis.beacon_relevance} sources={sources} />
+                  </p>
                 )}
                 <div className="space-y-3">
                   {analysis.recommended_offerings.map((offering, i) => (
@@ -325,7 +335,7 @@ export default function ReportPage() {
 
       {/* Section 8: CTA */}
       <div id="cta">
-        <RatingAndCTA analysisId={analysisId} companyName={analysis.company_name} />
+        <RatingAndCTA analysisId={analysisId} analysis={analysis} />
       </div>
 
       <Footer />
@@ -430,7 +440,7 @@ function OpportunityCard({ opportunity, sources }: { opportunity: InnovationOppo
 
       {/* Specific idea or explanation */}
       <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mb-3 flex-1">
-        {opportunity.specific_idea || opportunity.explanation}
+        <RichText text={opportunity.specific_idea || opportunity.explanation || ''} sources={sources} />
       </p>
 
       {/* Real-world example — expandable. Only show if we have a real company name. */}
@@ -480,11 +490,13 @@ function SourcesSection({ sources, confidence, explanation, researchData }: {
   explanation: string | null;
   researchData: Analysis['research_data'];
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (sources.length === 0 && !confidence) return null;
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-black tracking-tight text-beacon-dark-teal">
           Data Sources & Methodology
         </h2>
@@ -499,13 +511,9 @@ function SourcesSection({ sources, confidence, explanation, researchData }: {
         )}
       </div>
 
-      {explanation && (
-        <p className="text-sm text-beacon-dark-teal/60 leading-relaxed mb-4">{explanation}</p>
-      )}
-
-      {/* Research stats */}
+      {/* Research stats (always visible) */}
       {researchData && (
-        <div className="flex gap-6 mb-6">
+        <div className="flex gap-6 mb-4">
           {researchData.total_sources_found > 0 && (
             <div>
               <span className="text-2xl font-black text-beacon-dark-teal">{researchData.total_sources_found}</span>
@@ -527,37 +535,68 @@ function SourcesSection({ sources, confidence, explanation, researchData }: {
         </div>
       )}
 
-      {researchData?.rejection_reasons && (
-        <p className="text-xs text-beacon-medium-gray mb-6">{researchData.rejection_reasons}</p>
+      {/* Compact summary — expands on click */}
+      {sources.length > 0 && !expanded && (
+        <div className="flex items-center gap-3 bg-white rounded-lg p-4 border border-beacon-border">
+          <p className="text-sm text-beacon-dark-teal/70 flex-1">
+            This analysis used <strong className="text-beacon-dark-teal">{sources.length}</strong> source{sources.length !== 1 ? 's' : ''}
+            {explanation ? ` — ${explanation}` : '.'}
+          </p>
+          <button
+            onClick={() => setExpanded(true)}
+            className="text-xs font-mono tracking-widest uppercase text-beacon-cyan hover:text-beacon-dark-teal whitespace-nowrap"
+          >
+            View all &rarr;
+          </button>
+        </div>
       )}
 
-      {/* Source list */}
-      {sources.length > 0 && (
-        <div className="space-y-2">
-          {sources.map((source) => (
-            <div key={source.id} className="flex items-start gap-3 bg-white rounded-lg p-4 border border-beacon-border">
-              <span className="text-[10px] font-mono font-bold text-beacon-cyan bg-beacon-cyan/10 px-2 py-1 rounded flex-shrink-0 mt-0.5">
-                {source.id}
-              </span>
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium text-beacon-dark-teal">{source.title}</span>
-                {source.url && (
-                  <a href={source.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-beacon-cyan hover:underline truncate mt-0.5">
-                    {source.url}
-                  </a>
-                )}
+      {/* Expanded list */}
+      {sources.length > 0 && expanded && (
+        <>
+          {explanation && (
+            <p className="text-sm text-beacon-dark-teal/60 leading-relaxed mb-4">{explanation}</p>
+          )}
+          {researchData?.rejection_reasons && (
+            <p className="text-xs text-beacon-medium-gray mb-4">{researchData.rejection_reasons}</p>
+          )}
+          <div className="space-y-2">
+            {sources.map((source) => {
+              const clickable = isValidHttpUrl(source.url) && source.verified !== false;
+              return (
+              <div key={source.id} className="flex items-start gap-3 bg-white rounded-lg p-4 border border-beacon-border">
+                <span className="text-[10px] font-mono font-bold text-beacon-cyan bg-beacon-cyan/10 px-2 py-1 rounded flex-shrink-0 mt-0.5">
+                  {source.id}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-beacon-dark-teal">{source.title}</span>
+                  {clickable ? (
+                    <a href={source.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-beacon-cyan hover:underline truncate mt-0.5">
+                      {source.url}
+                    </a>
+                  ) : (
+                    <span className="block text-xs text-beacon-medium-gray italic mt-0.5">link unavailable</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {source.date && <span className="text-[10px] font-mono text-beacon-medium-gray">{source.date}</span>}
+                  {source.type && (
+                    <span className="text-[10px] font-mono text-beacon-medium-gray bg-beacon-light-gray px-2 py-0.5 rounded">
+                      {source.type.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {source.date && <span className="text-[10px] font-mono text-beacon-medium-gray">{source.date}</span>}
-                {source.type && (
-                  <span className="text-[10px] font-mono text-beacon-medium-gray bg-beacon-light-gray px-2 py-0.5 rounded">
-                    {source.type.replace(/_/g, ' ')}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => setExpanded(false)}
+            className="mt-3 text-xs font-mono tracking-widest uppercase text-beacon-medium-gray hover:text-beacon-dark-teal"
+          >
+            &larr; Collapse
+          </button>
+        </>
       )}
 
       <p className="text-[10px] font-mono text-beacon-medium-gray mt-6">

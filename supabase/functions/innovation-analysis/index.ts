@@ -10,6 +10,7 @@ const corsHeaders = {
 // Load prompt from shared module — edit _shared/prompts/innovation-analysis.md then regenerate
 import { INNOVATION_ANALYSIS_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-innovation-analysis.ts";
 import { getCuratedSources } from "../_shared/curated-sources.ts";
+import { verifySourceUrls, verifyUrl } from "../_shared/url-verify.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -27,7 +28,23 @@ Deno.serve(async (req) => {
   const publicClient = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { analysis_id, company_name, company_website, industry, session_id, confirmed_verticals } = await req.json();
+    const {
+      analysis_id,
+      company_name,
+      company_website,
+      industry,
+      session_id,
+      confirmed_verticals,
+      feedback_context,
+    } = await req.json() as {
+      analysis_id: string;
+      company_name: string;
+      company_website?: string;
+      industry?: string;
+      session_id?: string;
+      confirmed_verticals?: string[];
+      feedback_context?: { rating?: number; feedback?: string } | null;
+    };
 
     if (!analysis_id || !company_name) {
       return new Response(
@@ -36,8 +53,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check for recent cached analysis (same company in last 7 days)
-    const { data: cached } = await supabase
+    const hasFeedback = !!(feedback_context && (feedback_context.feedback || feedback_context.rating));
+
+    // Check for recent cached analysis (same company in last 7 days).
+    // Regeneration runs with `feedback_context` — we bypass the cache in that
+    // case because the user explicitly wants a fresh analysis that incorporates
+    // their corrections.
+    const { data: cached } = hasFeedback ? { data: null } : await supabase
       .from("analyses")
       .select("id")
       .ilike("company_name", company_name)
@@ -178,6 +200,25 @@ Deno.serve(async (req) => {
       return `- ${s.url}${scoreNote}${desc}`;
     }).join("\n");
 
+    const feedbackSection = hasFeedback
+      ? `
+
+## User Feedback on Previous Analysis
+
+The user provided the following feedback on a previous analysis of this company. Take it seriously:
+
+- Rating: ${feedback_context?.rating ?? "not given"}/5
+- Feedback: "${(feedback_context?.feedback || "").replace(/"/g, '\\"')}"
+
+Instructions for handling the feedback:
+- If the user corrected factual information, prioritize their corrections over what you find online.
+- If they said the analysis was too generic, be markedly more specific this time — name projects, technologies, partners, numbers.
+- If they mentioned specific initiatives, projects, partnerships, or people you missed, search for those explicitly.
+- If they disputed a dimension score, re-examine the evidence for that dimension carefully.
+- Do not flatter or restate the feedback in the output — just let it shape your research and conclusions.
+`
+      : "";
+
     const userMessage = `## Context
 
 **Company:** ${company_name}
@@ -190,7 +231,7 @@ Deno.serve(async (req) => {
 Prioritize these curated and learned sources when researching. They have been verified to produce accurate, relevant insights for ${industry || "this"} companies. Use them as your first-pass search targets before going broader:
 
 ${sourcesList}
-
+${feedbackSection}
 ---
 
 Perform a complete innovation opportunity analysis for ${company_name}. Today's date is ${currentDate}. Follow all phases of the research protocol, score all dimensions with sub-indicators, and produce the full JSON output.`;
@@ -294,6 +335,36 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       .from("analyses")
       .update({ analysis_status: "matching" })
       .eq("id", analysis_id);
+
+    // Verify source URLs with a HEAD fetch so the frontend never renders broken
+    // links. Each source gets a `verified: boolean` field. Runs in parallel
+    // and caps at ~5s per URL, so the whole step typically adds <5s.
+    try {
+      if (Array.isArray(analysisData.sources) && analysisData.sources.length > 0) {
+        analysisData.sources = await verifySourceUrls(analysisData.sources);
+      }
+    } catch (verifyErr) {
+      console.error("Source URL verification failed (non-critical):", verifyErr);
+    }
+
+    // Verify real-world example URLs in innovation_opportunities. If a URL
+    // can't be verified we null it out so the frontend falls back to the
+    // text-only example (company + what_they_did + result).
+    try {
+      if (Array.isArray(analysisData.innovation_opportunities)) {
+        await Promise.all(
+          analysisData.innovation_opportunities.map(async (opp: { real_world_example?: { url?: string | null } }) => {
+            const rwe = opp.real_world_example;
+            if (rwe?.url) {
+              const ok = await verifyUrl(rwe.url);
+              if (!ok) rwe.url = null;
+            }
+          }),
+        );
+      }
+    } catch (verifyErr) {
+      console.error("Real-world example URL verification failed (non-critical):", verifyErr);
+    }
 
     // Build industry_context from industry_landscape for backwards compat
     const industryLandscape = analysisData.industry_landscape || null;

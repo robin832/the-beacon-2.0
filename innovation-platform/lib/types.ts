@@ -94,6 +94,7 @@ export interface MatchDetails {
   member_expertise: string[];
   conversation_starter: string | null;
   teaser_text: string | null;
+  membership_tier?: string | null;
 }
 
 export interface MatchEvidence {
@@ -208,6 +209,7 @@ export interface AnalysisSource {
   url: string;
   date: string;
   type: string;
+  verified?: boolean;
 }
 
 export interface ResearchData {

@@ -1,122 +1,242 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getIndustryContent, IndustryFact, IndustryHeadline } from '@/lib/industry-content';
+import {
+  getIndustryContent,
+  IndustryHeadline,
+  IndustryQuote,
+  IndustryPoll,
+  PollOption,
+} from '@/lib/industry-content';
+import { trackEvent } from '@/lib/tracking';
 
 interface IndustryBriefingProps {
   industry: string | null;
 }
 
-const HEADLINE_ROTATION_MS = 10000;
-const FACT_ROTATION_MS = 7000;
+const QUOTE_ROTATION_MS = 8000;
+const QUOTES_BEFORE_POLL = 2;
 
 export default function IndustryBriefing({ industry }: IndustryBriefingProps) {
   const content = getIndustryContent(industry);
-  const [headlineIndex, setHeadlineIndex] = useState(0);
-  const [factIndex, setFactIndex] = useState(0);
-
-  useEffect(() => {
-    if (content.headlines.length <= 1) return;
-    const interval = setInterval(() => {
-      setHeadlineIndex((i) => (i + 1) % content.headlines.length);
-    }, HEADLINE_ROTATION_MS);
-    return () => clearInterval(interval);
-  }, [content.headlines.length]);
-
-  useEffect(() => {
-    if (content.facts.length <= 1) return;
-    const interval = setInterval(() => {
-      setFactIndex((i) => (i + 1) % content.facts.length);
-    }, FACT_ROTATION_MS);
-    return () => clearInterval(interval);
-  }, [content.facts.length]);
-
-  const currentHeadline = content.headlines[headlineIndex];
-  const currentFact = content.facts[factIndex];
 
   return (
-    <div className="w-full max-w-xl space-y-6" style={{ animation: 'fadeInUp 0.6s ease-out' }}>
+    <div className="w-full max-w-xl flex flex-col gap-6" style={{ animation: 'fadeInUp 0.6s ease-out' }}>
       {/* Section label */}
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-3">
         <span className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan">
           &#x1F4F0; Your Industry Right Now
         </span>
         {industry && (
-          <span className="text-[10px] font-mono text-white/30 truncate">— {industry}</span>
+          <span className="text-[10px] font-mono text-white/30 truncate">&mdash; {industry}</span>
         )}
       </div>
 
-      {/* Headline card (rotating) */}
-      <HeadlineCard key={headlineIndex} headline={currentHeadline} />
+      {/* Scrolling news ticker */}
+      <NewsTicker headlines={content.headlines} />
 
-      {/* Divider */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-white/10" />
-        <span className="text-[10px] font-mono tracking-widest uppercase text-white/30">Did you know</span>
-        <div className="flex-1 h-px bg-white/10" />
-      </div>
+      {/* Alternating witty quotes + interactive poll */}
+      <QuotesAndPoll quotes={content.quotes} poll={content.poll} industry={industry} />
 
-      {/* Fact card (rotating) */}
-      <FactCard key={factIndex} fact={currentFact} />
+      {/* Footer hint */}
+      <p className="text-[10px] font-mono tracking-widest uppercase text-white/20 text-center pt-2">
+        &#x1F4A1; While your report generates, here&apos;s something to think about&hellip;
+      </p>
+    </div>
+  );
+}
 
-      {/* Progress dots */}
-      <div className="flex items-center justify-center gap-1.5 pt-2">
-        {content.headlines.map((_, i) => (
-          <span
+/* ---- News Ticker ---- */
+
+function NewsTicker({ headlines }: { headlines: IndustryHeadline[] }) {
+  if (headlines.length === 0) return null;
+  // Double the list so the translateX(-50%) loop is seamless
+  const doubled = [...headlines, ...headlines];
+  const durationSeconds = Math.max(30, headlines.length * 10);
+
+  return (
+    <div className="overflow-hidden bg-black/30 border-y border-white/10 h-9 relative">
+      {/* Left/right fade masks */}
+      <div className="absolute left-0 top-0 bottom-0 w-8 z-10 pointer-events-none bg-gradient-to-r from-beacon-dark-teal to-transparent" />
+      <div className="absolute right-0 top-0 bottom-0 w-8 z-10 pointer-events-none bg-gradient-to-l from-beacon-dark-teal to-transparent" />
+      <div
+        className="flex items-center h-full whitespace-nowrap w-max"
+        style={{
+          animation: `ticker ${durationSeconds}s linear infinite`,
+        }}
+      >
+        {doubled.map((h, i) => (
+          <a
             key={i}
-            className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${
-              i === headlineIndex ? 'bg-beacon-cyan w-6' : 'bg-white/20'
-            }`}
-          />
+            href={h.url || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => { if (!h.url) e.preventDefault(); }}
+            className="flex items-center gap-3 shrink-0 px-6 hover:bg-white/5 h-full transition-colors"
+          >
+            <span className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan">
+              {h.source}
+            </span>
+            <span className="text-[10px] font-mono text-white/20">&bull;</span>
+            <span className="text-xs text-white/70">{h.title}</span>
+          </a>
         ))}
       </div>
     </div>
   );
 }
 
-function HeadlineCard({ headline }: { headline: IndustryHeadline | undefined }) {
-  if (!headline) return null;
+/* ---- Quotes + Poll ---- */
+
+type Phase = 'quotes' | 'poll';
+
+function QuotesAndPoll({
+  quotes,
+  poll,
+  industry,
+}: {
+  quotes: IndustryQuote[];
+  poll: IndustryPoll;
+  industry: string | null;
+}) {
+  const [phase, setPhase] = useState<Phase>('quotes');
+  const [quoteIndex, setQuoteIndex] = useState(0);
+  const [quotesShown, setQuotesShown] = useState(0);
+
+  // Rotate quotes every QUOTE_ROTATION_MS; after QUOTES_BEFORE_POLL rotations, switch to poll
+  useEffect(() => {
+    if (phase !== 'quotes' || quotes.length === 0) return;
+    const interval = setInterval(() => {
+      setQuotesShown((n) => {
+        const next = n + 1;
+        if (next >= QUOTES_BEFORE_POLL) {
+          setPhase('poll');
+          return next;
+        }
+        return next;
+      });
+      setQuoteIndex((i) => (i + 1) % quotes.length);
+    }, QUOTE_ROTATION_MS);
+    return () => clearInterval(interval);
+  }, [phase, quotes.length]);
+
+  // After the poll is answered (or dismissed), return to quotes after a pause
+  const returnToQuotes = () => {
+    setPhase('quotes');
+    setQuotesShown(0);
+    setQuoteIndex((i) => (i + 1) % Math.max(quotes.length, 1));
+  };
+
+  if (phase === 'poll') {
+    return <PollCard poll={poll} industry={industry} onDone={returnToQuotes} />;
+  }
+
+  const current = quotes[quoteIndex];
+  if (!current) return null;
+
   return (
-    <div
-      className="bg-white/5 border border-white/10 rounded-lg p-6 hover:border-white/20 transition-colors"
-      style={{ animation: 'fadeInUp 0.5s ease-out' }}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-[9px] font-mono tracking-widest uppercase text-beacon-cyan/80">
-          {headline.source}
-        </span>
-        <span className="text-[9px] font-mono text-white/30">&middot;</span>
-        <span className="text-[9px] font-mono text-white/30">{headline.date}</span>
+    <div className="min-h-[180px] flex items-center justify-center px-4">
+      <div
+        key={quoteIndex}
+        className="text-center"
+        style={{ animation: `quoteFade ${QUOTE_ROTATION_MS}ms ease-in-out forwards` }}
+      >
+        <p className="text-lg sm:text-xl text-white/90 leading-relaxed font-medium italic max-w-md mx-auto">
+          &ldquo;{current.text}&rdquo;
+        </p>
+        {current.attribution && (
+          <p className="text-[10px] font-mono tracking-widest uppercase text-white/30 mt-4">
+            &mdash; {current.attribution}
+          </p>
+        )}
       </div>
-      <h3 className="text-lg font-bold text-white mb-2 leading-tight">{headline.title}</h3>
-      <p className="text-sm text-white/60 leading-relaxed">{headline.snippet}</p>
-      {headline.url && (
-        <a
-          href={headline.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block mt-3 text-xs text-beacon-cyan hover:underline font-mono"
-        >
-          Read more &rarr;
-        </a>
-      )}
     </div>
   );
 }
 
-function FactCard({ fact }: { fact: IndustryFact | undefined }) {
-  if (!fact) return null;
+/* ---- Poll ---- */
+
+function PollCard({
+  poll,
+  industry,
+  onDone,
+}: {
+  poll: IndustryPoll;
+  industry: string | null;
+  onDone: () => void;
+}) {
+  const [answered, setAnswered] = useState<string | null>(null);
+
+  const handleSelect = (option: PollOption) => {
+    setAnswered(option.id);
+    trackEvent('loading_poll', '/analyzing', {
+      answer: option.id,
+      answer_label: option.label,
+      industry,
+      question: poll.question,
+    });
+    // Return to quotes after a few seconds so users can see the results
+    setTimeout(() => onDone(), 5000);
+  };
+
   return (
     <div
-      className="border-l-2 border-beacon-orange/50 pl-5 py-2"
+      className="border border-white/10 bg-white/5 rounded-lg p-6 min-h-[180px]"
       style={{ animation: 'fadeInUp 0.5s ease-out' }}
     >
-      <p className="text-base text-white/80 leading-relaxed font-medium">
-        &ldquo;{fact.stat}&rdquo;
+      <p className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan mb-2">
+        Quick question while you wait&hellip;
       </p>
-      <p className="text-[10px] font-mono tracking-widest uppercase text-white/30 mt-2">
-        &mdash; {fact.source}
-      </p>
+      <h3 className="text-base sm:text-lg font-bold text-white mb-5 leading-tight">
+        {poll.question}
+      </h3>
+
+      {!answered ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {poll.options.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => handleSelect(opt)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded border border-white/10 bg-white/5 hover:bg-beacon-cyan/20 hover:border-beacon-cyan/40 transition-colors text-left"
+            >
+              <span className="text-base">{opt.icon}</span>
+              <span className="text-xs text-white/80">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div>
+          <p className="text-[10px] font-mono tracking-widest uppercase text-white/40 mb-3">
+            Thanks! Here&apos;s what others said:
+          </p>
+          <div className="space-y-2">
+            {poll.options.map((opt) => {
+              const selected = opt.id === answered;
+              return (
+                <div key={opt.id} className="flex items-center gap-3">
+                  <span className="text-sm w-5 flex-shrink-0">{opt.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-[11px] truncate ${selected ? 'text-beacon-cyan font-bold' : 'text-white/60'}`}>
+                        {opt.label}
+                      </span>
+                      <span className={`text-[10px] font-mono ml-2 ${selected ? 'text-beacon-cyan' : 'text-white/40'}`}>
+                        {opt.percentage}%
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${selected ? 'bg-beacon-cyan' : 'bg-white/30'}`}
+                        style={{ width: `${opt.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -23,7 +23,7 @@ export default function StarRating({ value, onChange }: StarRatingProps) {
         >
           <svg
             className={`w-12 h-12 ${
-              star <= (hovered || value) ? 'fill-black' : 'fill-beacon-border'
+              star <= (hovered || value) ? 'fill-amber-400' : 'fill-white/15'
             } transition-colors duration-200`}
             viewBox="0 0 24 24"
           >

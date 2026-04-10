@@ -9,6 +9,7 @@ const corsHeaders = {
 
 // Load prompt from shared module — edit _shared/prompts/ecosystem-matching.md then regenerate
 import { ECOSYSTEM_MATCHING_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-ecosystem-matching.ts";
+import { verifyUrl } from "../_shared/url-verify.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -245,6 +246,27 @@ Generate match profiles for the top 6 members from this list. Return only the JS
       }
     } catch (parseErr) {
       console.error("Failed to parse match profiles:", parseErr, "Raw (first 500):", outputText.substring(0, 500));
+    }
+
+    // Verify evidence URLs before persisting. Unverified URLs are stripped
+    // (along with evidence_title) so the frontend never renders broken links.
+    // Runs in parallel with a 5s per-URL cap.
+    try {
+      await Promise.all(
+        matchProfiles.flatMap((profile) =>
+          (profile.match_evidence || []).map(async (ev) => {
+            if (ev.evidence_url) {
+              const ok = await verifyUrl(ev.evidence_url);
+              if (!ok) {
+                delete ev.evidence_url;
+                delete ev.evidence_title;
+              }
+            }
+          }),
+        ),
+      );
+    } catch (verifyErr) {
+      console.error("Evidence URL verification failed (non-critical):", verifyErr);
     }
 
     // Build profiles enriched with tier info

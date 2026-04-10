@@ -1,10 +1,14 @@
 'use client';
 
+import { AnalysisSource } from '@/lib/types';
+import { RichText } from '@/components/ui/SourceLink';
+
 interface SurprisingInsightProps {
   insight: string | null;
+  sources: AnalysisSource[];
 }
 
-export default function SurprisingInsight({ insight }: SurprisingInsightProps) {
+export default function SurprisingInsight({ insight, sources }: SurprisingInsightProps) {
   if (!insight) return null;
 
   return (
@@ -17,7 +21,7 @@ export default function SurprisingInsight({ insight }: SurprisingInsightProps) {
             </span>
           </div>
           <p className="text-lg sm:text-xl font-semibold text-beacon-dark-teal leading-relaxed">
-            {insight}
+            <RichText text={insight} sources={sources} />
           </p>
         </div>
       </div>

@@ -80,6 +80,34 @@ Deno.serve(async (req) => {
       } catch { /* interaction logging is non-critical */ }
     }
 
+    // Persist feedback on the analysis itself when this submission is the
+    // "feedback" lead type OR when we have a rating attached. Both the
+    // feedback form and the tryout claim can carry a rating — we only
+    // overwrite if the current analysis row doesn't already have feedback,
+    // so accidental double-submits don't clobber the first pass.
+    if (lead_type === "feedback" || (rating && rating >= 1 && rating <= 5)) {
+      try {
+        const { data: currentAnalysis } = await supabase
+          .from("analyses")
+          .select("feedback_submitted_at")
+          .eq("id", analysis_id)
+          .maybeSingle();
+
+        if (!currentAnalysis?.feedback_submitted_at || lead_type === "feedback") {
+          await supabase
+            .from("analyses")
+            .update({
+              user_feedback: message || null,
+              user_rating: rating || null,
+              feedback_submitted_at: new Date().toISOString(),
+            })
+            .eq("id", analysis_id);
+        }
+      } catch (fbError) {
+        console.error("Feedback persist failed (non-critical):", fbError);
+      }
+    }
+
     // Learning loop: if user provided a rating, update source quality for every source
     // used in the parent analysis. If the feedback text mentions a specific source
     // domain or title, boost/penalize that source directly.
