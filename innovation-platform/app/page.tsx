@@ -14,6 +14,7 @@ function LandingContent() {
   const searchParams = useSearchParams();
   const prefill = searchParams.get('company') || '';
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   if (searching) {
     return (
@@ -31,7 +32,18 @@ function LandingContent() {
         <DecorativeBackground />
         <HeroSection />
         <ProcessSteps />
-        <CompanyInput initialValue={prefill} onSearchStart={() => setSearching(true)} />
+        {searchError && (
+          <div className="max-w-2xl mx-auto px-6 mb-4">
+            <div className="p-4 rounded border-2 border-red-200 bg-red-50 text-sm text-red-700">
+              {searchError}
+            </div>
+          </div>
+        )}
+        <CompanyInput
+          initialValue={prefill}
+          onSearchStart={() => { setSearchError(null); setSearching(true); }}
+          onSearchError={(msg) => { setSearching(false); setSearchError(msg); }}
+        />
       </main>
       <Footer />
     </div>

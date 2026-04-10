@@ -10,9 +10,10 @@ import { supabase } from '@/lib/supabase';
 interface CompanyInputProps {
   initialValue?: string;
   onSearchStart?: () => void;
+  onSearchError?: (message: string) => void;
 }
 
-export default function CompanyInput({ initialValue = '', onSearchStart }: CompanyInputProps) {
+export default function CompanyInput({ initialValue = '', onSearchStart, onSearchError }: CompanyInputProps) {
   const [companyName, setCompanyName] = useState(initialValue);
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -44,16 +45,19 @@ export default function CompanyInput({ initialValue = '', onSearchStart }: Compa
       router.push('/confirm');
     } catch (err) {
       console.error('Company lookup failed:', err);
-      // Try to extract a useful message — supabase-js wraps function errors in
-      // FunctionsHttpError with a `context.json()` method, but we can also fish
-      // for an "Overloaded" hint in the raw error string.
+      // Extract a useful message — supabase-js wraps non-2xx function errors
+      // in FunctionsHttpError; we also watch for an "Overloaded" hint in the
+      // raw error string for transparency.
       const raw = String(err instanceof Error ? err.message : err).toLowerCase();
-      if (raw.includes('overload') || raw.includes('502') || raw.includes('upstream')) {
-        setError('Our AI is busy right now. Please try again in a minute.');
-      } else {
-        setError('Something went wrong. Please wait a moment and try again.');
-      }
+      const message = (raw.includes('overload') || raw.includes('502') || raw.includes('upstream'))
+        ? 'Our AI is busy right now. Please try again in a minute.'
+        : 'Something went wrong. Please wait a moment and try again.';
+      setError(message);
       setLoading(false);
+      // Tell the parent to un-stick its loading overlay. Without this, the
+      // landing page keeps rendering the full-screen PageTransition because
+      // this component is unmounted by the time the error lands.
+      onSearchError?.(message);
     }
   };
 
