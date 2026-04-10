@@ -97,6 +97,16 @@ export default function ConfirmPage() {
   }
 
   const primary = candidates[selected];
+  // A "thin" candidate has no useful detail beyond the name. Happens when
+  // the lookup couldn't identify the company OR Claude returned malformed
+  // JSON and we fell into the parser fallback. We surface a warning + retry
+  // CTA so the user isn't staring at an empty card.
+  const isThinCandidate = !primary.website
+    && !primary.industry
+    && !primary.headquarters
+    && !primary.description
+    && !primary.employee_range
+    && !primary.founded;
 
   return (
     <div className="relative min-h-screen bg-beacon-light-gray flex flex-col">
@@ -131,8 +141,35 @@ export default function ConfirmPage() {
             </div>
           )}
 
+          {isThinCandidate && (
+            <Card className="p-6 mb-6 border-beacon-orange/40 bg-beacon-orange/5">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl flex-shrink-0">&#x26A0;&#xFE0F;</span>
+                <div>
+                  <h3 className="font-bold text-beacon-dark-teal mb-1">We couldn&apos;t find detailed info</h3>
+                  <p className="text-sm text-beacon-dark-teal/70 leading-relaxed mb-3">
+                    Our lookup didn&apos;t return reliable details for &ldquo;{originalInput || primary.name}&rdquo;.
+                    Try the company&apos;s full legal name (e.g. &ldquo;Herfurth Logistics NV&rdquo;) or the parent group,
+                    or proceed anyway and we&apos;ll work with the name you entered.
+                  </p>
+                  <button
+                    onClick={handleTryAgain}
+                    className="text-xs font-mono tracking-widest uppercase text-beacon-cyan hover:text-beacon-dark-teal"
+                  >
+                    Try a different name &rarr;
+                  </button>
+                </div>
+              </div>
+            </Card>
+          )}
+
           <Card className="p-8 mb-8">
             <div className="space-y-4">
+              {isThinCandidate && (
+                <p className="text-sm text-beacon-medium-gray italic">
+                  No additional details available for this company.
+                </p>
+              )}
               {primary.website && (
                 <div>
                   <span className="text-xs font-mono tracking-widest uppercase text-beacon-medium-gray">Website</span>

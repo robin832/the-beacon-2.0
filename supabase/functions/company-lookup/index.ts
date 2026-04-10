@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { company_name, session_id } = await req.json();
+    const { company_name } = await req.json();
 
     if (!company_name) {
       return new Response(
@@ -35,35 +35,79 @@ Deno.serve(async (req) => {
       db: { schema: "innovation" },
     });
 
-    // Call Claude API with web_search tool and v2 system prompt
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey!,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        tools: [
-          {
-            type: "web_search_20250305",
-            name: "web_search",
-            max_uses: 5,
-          },
-        ],
-        messages: [
-          {
-            role: "user",
-            content: `Identify the company "${company_name}". Follow the research protocol to find the correct organization and return structured information in the specified JSON format.`,
-          },
-        ],
-      }),
-    });
+    // Anthropic call with one retry on transient overload. Anthropic returns
+    // HTTP 529 (or a body of {type:"error", error:{type:"overloaded_error"}})
+    // when their fleet is hot. A single ~1.5s backoff catches most of those.
+    const callAnthropic = async () => {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey!,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          // 4096 tokens leaves headroom for the reasoning + multi-candidate JSON.
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4096,
+          system: SYSTEM_PROMPT,
+          tools: [
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+              max_uses: 5,
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: `Identify the company "${company_name}". Follow the research protocol to find the correct organization and return structured information in the specified JSON format.`,
+            },
+          ],
+        }),
+      });
+      const body = await r.json();
+      return { r, body };
+    };
 
-    const result = await response.json();
+    const isOverloaded = (status: number, body: { error?: { type?: string }; type?: string }) =>
+      status === 529 ||
+      status === 503 ||
+      body?.error?.type === "overloaded_error" ||
+      (body?.type === "error" && /overload/i.test(JSON.stringify(body).slice(0, 300)));
+
+    let { r: response, body: result } = await callAnthropic();
+    if (isOverloaded(response.status, result)) {
+      console.warn("[company-lookup] Anthropic overloaded, retrying after 1500ms");
+      await new Promise((res) => setTimeout(res, 1500));
+      ({ r: response, body: result } = await callAnthropic());
+    }
+
+    // Surface upstream errors instead of silently swallowing them. Anthropic
+    // returns either { type: "error", error: { ... } } on a logical error or
+    // a non-2xx HTTP status on infra issues. Either way we want to know.
+    if (!response.ok || result?.error || result?.type === "error") {
+      const detail = result?.error?.message || result?.message || JSON.stringify(result).slice(0, 500);
+      console.error(`[company-lookup] Anthropic error (status=${response.status}):`, detail);
+      // Persist a debug log row so we can audit failures via SQL
+      try {
+        const debugClient = createClient(supabaseUrl, supabaseServiceKey);
+        await debugClient.from("ai_logs").insert({
+          feature: "company_lookup",
+          model: "claude-sonnet-4-20250514",
+          input_tokens: 0,
+          output_tokens: 0,
+          latency_ms: Date.now() - startTime,
+          input_summary: company_name,
+          output_summary: JSON.stringify(result).slice(0, 4000),
+          error: `Anthropic ${response.status}: ${detail}`,
+        });
+      } catch { /* non-critical */ }
+      return new Response(
+        JSON.stringify({ error: "Company lookup upstream error", detail }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Extract text from response
     let outputText = "";
@@ -81,19 +125,41 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Parse the JSON from Claude's response
-    let candidates;
+    // Parse JSON from Claude's response. Uses depth-counted brace matching so
+    // we tolerate markdown fences, leading prose, and multiple JSON-like
+    // substrings — same approach as the innovation-analysis function.
+    let candidates: Array<Record<string, unknown>> | null = null;
+    let parseError: string | null = null;
     try {
-      // Try to extract JSON from the response (handle markdown code blocks)
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        candidates = parsed.candidates || [parsed];
-      } else {
-        throw new Error("No JSON found in response");
+      let jsonText = outputText;
+      const fenceMatch = outputText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonText = fenceMatch[1].trim();
+
+      const startIdx = jsonText.indexOf("{");
+      if (startIdx === -1) throw new Error("No JSON object found in response");
+
+      let depth = 0;
+      let endIdx = -1;
+      for (let i = startIdx; i < jsonText.length; i++) {
+        if (jsonText[i] === "{") depth++;
+        else if (jsonText[i] === "}") {
+          depth--;
+          if (depth === 0) { endIdx = i; break; }
+        }
       }
-    } catch {
-      // Fallback: return the company name as-is
+      if (endIdx === -1) throw new Error("Unbalanced JSON braces");
+
+      const parsed = JSON.parse(jsonText.substring(startIdx, endIdx + 1));
+      const list = Array.isArray(parsed.candidates) ? parsed.candidates : [parsed];
+      candidates = list.length > 0 ? list : null;
+    } catch (e) {
+      parseError = String((e as Error)?.message || e);
+      console.error("[company-lookup] parse failed:", parseError, "raw (first 500):", outputText.slice(0, 500));
+    }
+
+    // Fallback: return the company name as-is so the page still has something
+    // to show, but flag low confidence so the UI can warn the user.
+    if (!candidates || candidates.length === 0) {
       candidates = [
         {
           name: company_name,
@@ -103,7 +169,7 @@ Deno.serve(async (req) => {
           description: null,
           employee_range: null,
           founded: null,
-          confidence: 0.5,
+          confidence: 0.1,
           source: null,
         },
       ];
@@ -124,7 +190,8 @@ Deno.serve(async (req) => {
 
     const latencyMs = Date.now() - startTime;
 
-    // Log to ai_logs
+    // Log to ai_logs. Stores Claude's raw text in `output_summary` (truncated)
+    // and any parse error in `error`, so failed lookups can be audited via SQL.
     const publicClient = createClient(supabaseUrl, supabaseServiceKey);
     try {
       await publicClient.from("ai_logs").insert({
@@ -133,9 +200,13 @@ Deno.serve(async (req) => {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         latency_ms: latencyMs,
-        metadata: { company_name, session_id },
+        input_summary: company_name,
+        output_summary: outputText.slice(0, 4000),
+        error: parseError,
       });
-    } catch { /* logging failure is non-critical */ }
+    } catch (logErr) {
+      console.error("[company-lookup] ai_logs insert failed:", logErr);
+    }
 
     return new Response(
       JSON.stringify({ candidates }),

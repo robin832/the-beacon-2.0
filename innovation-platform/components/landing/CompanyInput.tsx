@@ -35,13 +35,24 @@ export default function CompanyInput({ initialValue = '', onSearchStart }: Compa
       });
 
       if (fnError) throw fnError;
+      if (!data || data.error) {
+        throw new Error(data?.detail || data?.error || 'Empty response from lookup');
+      }
 
       sessionStorage.setItem('company_lookup', JSON.stringify(data));
       sessionStorage.setItem('company_name_input', companyName.trim());
       router.push('/confirm');
     } catch (err) {
       console.error('Company lookup failed:', err);
-      setError('Something went wrong. Please wait a moment and try again.');
+      // Try to extract a useful message — supabase-js wraps function errors in
+      // FunctionsHttpError with a `context.json()` method, but we can also fish
+      // for an "Overloaded" hint in the raw error string.
+      const raw = String(err instanceof Error ? err.message : err).toLowerCase();
+      if (raw.includes('overload') || raw.includes('502') || raw.includes('upstream')) {
+        setError('Our AI is busy right now. Please try again in a minute.');
+      } else {
+        setError('Something went wrong. Please wait a moment and try again.');
+      }
       setLoading(false);
     }
   };
