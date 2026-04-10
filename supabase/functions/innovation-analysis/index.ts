@@ -127,17 +127,20 @@ Deno.serve(async (req) => {
           await supabase.from("maturity_dimensions").insert(dimRows);
         }
 
-        // Trigger ecosystem matching for the new analysis
-        try {
-          await fetch(`${supabaseUrl}/functions/v1/ecosystem-matching`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({ analysis_id }),
-          });
-        } catch { /* matching is optional */ }
+        // Trigger ecosystem matching in the background via waitUntil
+        const cachedMatchingTask = fetch(`${supabaseUrl}/functions/v1/ecosystem-matching`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ analysis_id }),
+        }).catch(() => { /* matching is optional */ });
+        // deno-lint-ignore no-explicit-any
+        const edgeRuntimeCached = (globalThis as any).EdgeRuntime;
+        if (edgeRuntimeCached?.waitUntil) {
+          edgeRuntimeCached.waitUntil(cachedMatchingTask);
+        }
 
         return new Response(
           JSON.stringify({ success: true, analysis_id, cached: true }),
@@ -242,35 +245,53 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       .update({ analysis_status: "analyzing" })
       .eq("id", analysis_id);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 8000,
-        system: SYSTEM_PROMPT,
-        tools: [
-          {
-            type: "web_search_20250305",
-            name: "web_search",
-            // 8 searches: ~3 company-specific, ~2 industry context, ~1 competitive,
-            // ~2 for real-world example case studies. Big quality lift over 3.
-            // History: started at 10, raised to 15, dropped to 3 during a 20KB prompt
-            // timeout incident. Prompt is now ~8KB so we can comfortably go higher again.
-            max_uses: 8,
-          },
-        ],
-        messages: [
-          { role: "user", content: userMessage },
-        ],
-      }),
-    });
+    // Anthropic call with one retry on transient overload. Innovation analysis
+    // is long (80-120s) so we can only afford a single retry with a short
+    // backoff before risking the 150s edge function timeout.
+    const callAnthropic = async () => {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          system: SYSTEM_PROMPT,
+          tools: [
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+              // 10 searches: ~5 company research, ~3-4 real-world example verification,
+              // ~1-2 industry context. Bumped from 8 to 10 after observing analyses
+              // with as few as 3 sources — the prompt now requires 8+ distinct sources
+              // and verified URLs for each of 3 real-world examples.
+              max_uses: 10,
+            },
+          ],
+          messages: [
+            { role: "user", content: userMessage },
+          ],
+        }),
+      });
+      const body = await r.json();
+      return { r, body };
+    };
 
-    const result = await response.json();
+    const isOverloaded = (status: number, body: { error?: { type?: string }; type?: string }) =>
+      status === 529 ||
+      status === 503 ||
+      body?.error?.type === "overloaded_error" ||
+      (body?.type === "error" && /overload/i.test(JSON.stringify(body).slice(0, 300)));
+
+    let { r: response, body: result } = await callAnthropic();
+    if (isOverloaded(response.status, result)) {
+      console.warn("[innovation-analysis] Anthropic overloaded, retrying after 2500ms");
+      await new Promise((res) => setTimeout(res, 2500));
+      ({ r: response, body: result } = await callAnthropic());
+    }
 
     // Log Claude API response status for debugging
     if (result.error || result.type === "error") {
@@ -509,18 +530,34 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       console.error("Source usage logging failed (non-critical):", srcError);
     }
 
-    // Trigger ecosystem matching as fire-and-forget (don't await)
-    // The matching function runs independently and inserts into ecosystem_matches when done
-    fetch(`${supabaseUrl}/functions/v1/ecosystem-matching`, {
+    // Trigger ecosystem matching as a Supabase background task so the fetch
+    // survives past the HTTP response. Plain fire-and-forget `fetch().catch()`
+    // gets aborted by the Deno edge runtime the moment this function returns —
+    // that was silently dropping 100% of recent match jobs. `EdgeRuntime.waitUntil`
+    // is the supported way to keep async work running in the background.
+    const matchingTask = fetch(`${supabaseUrl}/functions/v1/ecosystem-matching`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${supabaseServiceKey}`,
       },
       body: JSON.stringify({ analysis_id }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        console.error(`Ecosystem matching returned ${res.status}: ${txt.slice(0, 300)}`);
+      }
     }).catch((matchError) => {
       console.error("Ecosystem matching trigger failed:", matchError);
     });
+
+    // Supabase Edge Functions expose EdgeRuntime.waitUntil for background tasks.
+    // Guard the reference for local/test environments that don't have it.
+    // deno-lint-ignore no-explicit-any
+    const edgeRuntime = (globalThis as any).EdgeRuntime;
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(matchingTask);
+    }
 
     const latencyMs = Date.now() - startTime;
 

@@ -261,6 +261,9 @@ export default function RatingAndCTA({ analysisId, analysis }: RatingAndCTAProps
           >
             {claiming ? 'Redirecting…' : 'Claim Your Free Tryout \u2192'}
           </Button>
+          <p className="text-[10px] font-mono tracking-widest uppercase text-white/30 mt-4">
+            No rating required &mdash; feedback above is optional
+          </p>
         </div>
       </div>
     </section>
