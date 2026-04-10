@@ -15,8 +15,8 @@ interface SourceLinkProps {
  * Analyses written before URL verification landed won't have the flag — we
  * treat those as clickable by default so old reports don't lose every link.
  */
-function isClickable(source: AnalysisSource | undefined): source is AnalysisSource {
-  if (!source || !source.url) return false;
+function isClickable(source: AnalysisSource): boolean {
+  if (!source.url) return false;
   return source.verified !== false;
 }
 
