@@ -95,9 +95,25 @@ Deno.serve(async (req) => {
       return { member, score };
     });
 
-    // Sort and take top 8 candidates for Claude to evaluate (gives Claude room to rerank)
+    // Sort and ensure both startups AND corporates are represented
+    // so the visible cards (rank 1-2) can show one of each
     scored.sort((a, b) => b.score - a.score);
-    const topCandidates = scored.slice(0, 8);
+    const STARTUP_TIERS_PREFILTER = new Set(["Tech Starter", "Tech Accelerator"]);
+    const isStartupTier = (m: { membership_tier?: string | null }) =>
+      !!m.membership_tier && STARTUP_TIERS_PREFILTER.has(m.membership_tier as string);
+
+    const topStartups = scored.filter((s) => isStartupTier(s.member)).slice(0, 5);
+    const topCorporates = scored.filter((s) => !isStartupTier(s.member)).slice(0, 5);
+    // Merge, dedupe, and limit to 8 — guaranteed to include both categories when available
+    const seen = new Set<string>();
+    const topCandidates: typeof scored = [];
+    for (const cand of [...topStartups, ...topCorporates].sort((a, b) => b.score - a.score)) {
+      if (!seen.has(cand.member.id as string)) {
+        seen.add(cand.member.id as string);
+        topCandidates.push(cand);
+        if (topCandidates.length >= 8) break;
+      }
+    }
 
     // Format prospect data for the prompt
     const gapTexts = gaps.map((g) => typeof g === "string" ? g : (g as { opportunity?: string; gap?: string }).opportunity || (g as { gap?: string }).gap || "");
@@ -177,27 +193,76 @@ Generate match profiles for the top 6 members from this list. Return only the JS
     }
 
     // Build match rows with v2 fields
-    const matchRows = matchProfiles.slice(0, 6).map((profile, i) => {
-      // Find the member to get account details
+    // Categorize each member as "startup" or "corporate" based on membership_tier
+    // Startup tiers: Tech Starter, Tech Accelerator (smaller, growing companies)
+    // Corporate tiers: Tech Champion, Industry Engage/Strategic, Private Office, Office (larger, established)
+    const STARTUP_TIERS = new Set(["Tech Starter", "Tech Accelerator"]);
+    const isStartup = (tier: string | null | undefined) =>
+      !!tier && STARTUP_TIERS.has(tier);
+
+    // Build profiles with member info and category
+    const profilesWithCategory = matchProfiles.slice(0, 8).map((profile) => {
       const memberEntry = topCandidates.find((m) => m.member.id === profile.matched_account_id);
       const member = memberEntry?.member;
+      const tier = (member?.membership_tier as string | null) || null;
+      return {
+        profile,
+        member,
+        tier,
+        category: isStartup(tier) ? "startup" : "corporate",
+      };
+    });
 
+    // Pick visible: highest-ranked corporate + highest-ranked startup
+    // Claude already returned them in rank order, so we can just iterate
+    const visibleCorporate = profilesWithCategory.find((p) => p.category === "corporate");
+    const visibleStartup = profilesWithCategory.find((p) => p.category === "startup");
+
+    // Build the visible list (1-2) and locked list (3-6)
+    // If we don't have one of each category, fall back to top 2 by Claude's ranking
+    const visibleList: typeof profilesWithCategory = [];
+    if (visibleCorporate && visibleStartup) {
+      // Order them by their original Claude rank to keep the strongest first
+      const corpRank = profilesWithCategory.indexOf(visibleCorporate);
+      const startRank = profilesWithCategory.indexOf(visibleStartup);
+      if (corpRank < startRank) {
+        visibleList.push(visibleCorporate, visibleStartup);
+      } else {
+        visibleList.push(visibleStartup, visibleCorporate);
+      }
+    } else {
+      // Fall back: just take Claude's top 2
+      visibleList.push(...profilesWithCategory.slice(0, 2));
+    }
+
+    // Locked: take remaining profiles in Claude's original rank order, limit to 4
+    const visibleIds = new Set(visibleList.map((p) => p.profile.matched_account_id));
+    const lockedList = profilesWithCategory
+      .filter((p) => !visibleIds.has(p.profile.matched_account_id))
+      .slice(0, 4);
+
+    const finalList = [...visibleList, ...lockedList];
+
+    const matchRows = finalList.map((entry, i) => {
+      const { profile, member } = entry;
       return {
         analysis_id,
         matched_account_id: profile.matched_account_id,
-        match_rank: profile.rank || (i + 1),
+        match_rank: i + 1,
         match_score: profile.match_score || 0.5,
         match_rationale: profile.why_this_match || null,
         match_category: profile.match_category || "Technology Partner",
         shared_themes: profile.shared_sectors || [],
         is_visible: i < 2,
         account_name: member?.name || null,
-        account_website: null, // Not available in the accounts query
+        account_website: null,
         account_description: member?.description || null,
         match_details: {
           member_expertise: profile.member_expertise || [],
           conversation_starter: profile.conversation_starter || null,
           teaser_text: profile.teaser_text || null,
+          company_category: entry.category,
+          membership_tier: entry.tier,
         },
         match_evidence: profile.match_evidence || [],
       };
