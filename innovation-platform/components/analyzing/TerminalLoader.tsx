@@ -20,9 +20,10 @@ const statusMessages = [
 
 interface TerminalLoaderProps {
   analysisStatus: string | null;
+  embedded?: boolean;
 }
 
-export default function TerminalLoader({ analysisStatus }: TerminalLoaderProps) {
+export default function TerminalLoader({ analysisStatus, embedded = false }: TerminalLoaderProps) {
   const [visibleLines, setVisibleLines] = useState(0);
   const [startTime] = useState(Date.now());
 
@@ -41,18 +42,24 @@ export default function TerminalLoader({ analysisStatus }: TerminalLoaderProps) 
     }
   }, [analysisStatus]);
 
-  return (
-    <div className="relative min-h-screen bg-beacon-dark-teal flex items-center justify-center overflow-hidden">
-      {/* CRT scanline overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none z-10"
-        style={{
-          background:
-            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,172,217,0.03) 2px, rgba(0,172,217,0.03) 4px)',
-        }}
-      />
+  const containerClass = embedded
+    ? 'relative w-full max-w-xl'
+    : 'relative min-h-screen bg-beacon-dark-teal flex items-center justify-center overflow-hidden';
 
-      <div className="relative z-20 max-w-xl w-full px-6">
+  return (
+    <div className={containerClass}>
+      {/* CRT scanline overlay — only render when standalone */}
+      {!embedded && (
+        <div
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{
+            background:
+              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,172,217,0.03) 2px, rgba(0,172,217,0.03) 4px)',
+          }}
+        />
+      )}
+
+      <div className={embedded ? 'relative z-20 w-full' : 'relative z-20 max-w-xl w-full px-6'}>
         {/* Logo */}
         <div className="text-center mb-12">
           <img src="/logo-white.svg" alt="The Beacon" className="h-8 mx-auto opacity-20" />

@@ -80,6 +80,56 @@ Deno.serve(async (req) => {
       } catch { /* interaction logging is non-critical */ }
     }
 
+    // Learning loop: if user provided a rating, update source quality for every source
+    // used in the parent analysis. If the feedback text mentions a specific source
+    // domain or title, boost/penalize that source directly.
+    if (rating && rating >= 1 && rating <= 5) {
+      try {
+        const { data: analysis } = await supabase
+          .from("analyses")
+          .select("industry, sources")
+          .eq("id", analysis_id)
+          .single();
+
+        if (analysis?.sources && Array.isArray(analysis.sources)) {
+          const vertical = (analysis.industry as string) || "General";
+          const feedbackLower = (message || "").toLowerCase();
+          const sources = analysis.sources as Array<{ url?: string; title?: string }>;
+
+          for (const src of sources) {
+            if (!src.url) continue;
+            let domain = "";
+            try {
+              domain = new URL(src.url).hostname.replace(/^www\./, "");
+            } catch { continue; }
+
+            // Update average rating for this source
+            await supabase.rpc("update_source_rating", {
+              p_domain: domain,
+              p_vertical: vertical,
+              p_rating: rating,
+            });
+
+            // If feedback text mentions this source domain or title, adjust feedback count
+            const titleLower = (src.title || "").toLowerCase();
+            const mentioned = feedbackLower.length > 0 && (
+              feedbackLower.includes(domain) ||
+              (titleLower.length > 3 && feedbackLower.includes(titleLower))
+            );
+            if (mentioned) {
+              await supabase.rpc("adjust_source_feedback", {
+                p_domain: domain,
+                p_vertical: vertical,
+                p_positive: rating >= 4,
+              });
+            }
+          }
+        }
+      } catch (srcError) {
+        console.error("Source rating update failed (non-critical):", srcError);
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: true, lead_id: lead.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

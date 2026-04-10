@@ -3,11 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import TerminalLoader from '@/components/analyzing/TerminalLoader';
+import IndustryBriefing from '@/components/analyzing/IndustryBriefing';
 import { supabase } from '@/lib/supabase';
 
 export default function AnalyzingPage() {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>('pending');
+  const [industry, setIndustry] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
   const analysisId = typeof window !== 'undefined'
@@ -18,18 +20,19 @@ export default function AnalyzingPage() {
     if (!analysisId) return;
     const { data } = await supabase
       .from('analyses')
-      .select('analysis_status')
+      .select('analysis_status, industry')
       .eq('id', analysisId)
       .single();
     if (data) {
       setStatus(data.analysis_status);
+      if (data.industry && !industry) setIndustry(data.industry);
       if (data.analysis_status === 'complete') {
         router.push(`/report/${analysisId}`);
       } else if (data.analysis_status === 'error') {
         setError(true);
       }
     }
-  }, [analysisId, router]);
+  }, [analysisId, industry, router]);
 
   useEffect(() => {
     if (!analysisId) {
@@ -37,10 +40,13 @@ export default function AnalyzingPage() {
       return;
     }
 
+    // Initial fetch so we have the industry immediately for the briefing
+    checkStatus();
+
     // Poll every 4 seconds
     const interval = setInterval(checkStatus, 4000);
 
-    // Timeout after 3 minutes (analysis can take a while with rate limit retries)
+    // Timeout after 3 minutes
     const timeout = setTimeout(() => setError(true), 180000);
 
     return () => {
@@ -52,7 +58,6 @@ export default function AnalyzingPage() {
   if (error) {
     const handleRetry = async () => {
       if (!analysisId) return;
-      // Check one more time — maybe it completed while showing the error
       const { data } = await supabase
         .from('analyses')
         .select('analysis_status')
@@ -94,5 +99,26 @@ export default function AnalyzingPage() {
     );
   }
 
-  return <TerminalLoader analysisStatus={status} />;
+  return (
+    <div className="min-h-screen bg-beacon-dark-teal">
+      {/* CRT scanline overlay (full page) */}
+      <div
+        className="absolute inset-0 pointer-events-none z-10"
+        style={{
+          background:
+            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,172,217,0.03) 2px, rgba(0,172,217,0.03) 4px)',
+        }}
+      />
+
+      {/* Split view: terminal loader on the left, industry briefing on the right */}
+      <div className="relative z-20 min-h-screen grid grid-cols-1 lg:grid-cols-2 gap-0">
+        <div className="flex items-center justify-center py-12 px-6 border-b lg:border-b-0 lg:border-r border-white/5">
+          <TerminalLoader analysisStatus={status} embedded />
+        </div>
+        <div className="flex items-center justify-center py-12 px-6">
+          <IndustryBriefing industry={industry} />
+        </div>
+      </div>
+    </div>
+  );
 }

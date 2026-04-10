@@ -71,6 +71,15 @@ Maturity levels: 0.0-1.0 Laggard, 1.1-2.0 Follower, 2.1-3.0 Active, 3.1-4.0 Lead
 - **Opportunities need concrete ideas** — not "invest in digital transformation" but "implement X system starting with Y"
 - For each opportunity, try to find a real-world example of a similar company
 
+### Real-world example URL rule (STRICT)
+
+For \`real_world_example.url\` in \`innovation_opportunities\`:
+- ONLY include a URL if you actually found it via web search in THIS session and the page was accessible
+- If you found a great example but the URL is uncertain, set \`url\` to null
+- An example with no URL is still valuable — describe the company, what they did, and the result
+- **Never construct, guess, or infer a URL from memory.** An invented URL is worse than no URL.
+- The frontend only shows the "See how [company] did it →" link when \`url\` is non-null
+
 ---
 
 ## Output Format

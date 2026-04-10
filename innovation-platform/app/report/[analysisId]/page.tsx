@@ -17,6 +17,16 @@ import { RichText } from '@/components/ui/SourceLink';
 import RatingAndCTA from '@/components/report/RatingAndCTA';
 import Footer from '@/components/layout/Footer';
 
+function isValidHttpUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export default function ReportPage() {
   const params = useParams();
   const analysisId = params.analysisId as string;
@@ -423,8 +433,8 @@ function OpportunityCard({ opportunity, sources }: { opportunity: InnovationOppo
         {opportunity.specific_idea || opportunity.explanation}
       </p>
 
-      {/* Real-world example — expandable */}
-      {opportunity.real_world_example && (
+      {/* Real-world example — expandable. Only show if we have a real company name. */}
+      {opportunity.real_world_example?.company && opportunity.real_world_example.what_they_did && (
         <div className="mb-3">
           <button
             onClick={() => setExpanded(!expanded)}
@@ -439,11 +449,11 @@ function OpportunityCard({ opportunity, sources }: { opportunity: InnovationOppo
               {opportunity.real_world_example.result && (
                 <p className="text-beacon-dark-teal/70 font-medium mb-1">Result: {opportunity.real_world_example.result}</p>
               )}
-              {opportunity.real_world_example.url && (
-                <a href={opportunity.real_world_example.url} target="_blank" rel="noopener noreferrer" className="text-beacon-cyan hover:underline">
-                  Read more &rarr;
+              {isValidHttpUrl(opportunity.real_world_example.url) ? (
+                <a href={opportunity.real_world_example.url!} target="_blank" rel="noopener noreferrer" className="text-beacon-cyan hover:underline">
+                  See how {opportunity.real_world_example.company} did it &rarr;
                 </a>
-              )}
+              ) : null}
             </div>
           )}
         </div>

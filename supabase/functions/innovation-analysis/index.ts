@@ -9,6 +9,7 @@ const corsHeaders = {
 
 // Load prompt from shared module — edit _shared/prompts/innovation-analysis.md then regenerate
 import { INNOVATION_ANALYSIS_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-innovation-analysis.ts";
+import { getCuratedSources } from "../_shared/curated-sources.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -136,12 +137,61 @@ Deno.serve(async (req) => {
 
     const currentDate = new Date().toISOString().split("T")[0];
 
+    // Build curated + learned source list for this vertical
+    const curated = getCuratedSources(industry);
+
+    // Fetch top learned sources from source_quality table (sources that have performed well historically)
+    const { data: learnedSources } = await supabase
+      .from("source_quality")
+      .select("source_domain, source_url, quality_score")
+      .eq("industry_vertical", industry || "")
+      .not("quality_score", "is", null)
+      .order("quality_score", { ascending: false })
+      .limit(10);
+
+    // Merge curated and learned (learned ranked first, curated filling the gap)
+    const seenDomains = new Set<string>();
+    type SourceForPrompt = { domain: string; url: string; description?: string; score?: number };
+    const sourcesForPrompt: SourceForPrompt[] = [];
+    for (const ls of (learnedSources || [])) {
+      const domain = ls.source_domain as string;
+      if (!seenDomains.has(domain)) {
+        seenDomains.add(domain);
+        sourcesForPrompt.push({
+          domain,
+          url: (ls.source_url as string) || `https://${domain}`,
+          score: Number(ls.quality_score),
+        });
+      }
+    }
+    for (const cs of curated) {
+      if (!seenDomains.has(cs.domain)) {
+        seenDomains.add(cs.domain);
+        sourcesForPrompt.push({ domain: cs.domain, url: cs.url, description: cs.description });
+      }
+      if (sourcesForPrompt.length >= 18) break;
+    }
+
+    const sourcesList = sourcesForPrompt.map((s) => {
+      const scoreNote = typeof s.score === "number" ? ` [quality: ${s.score.toFixed(2)}]` : "";
+      const desc = s.description ? ` — ${s.description}` : "";
+      return `- ${s.url}${scoreNote}${desc}`;
+    }).join("\n");
+
     const userMessage = `## Context
 
 **Company:** ${company_name}
 **Website:** ${company_website || "Not provided"}
 **Industry:** ${industry || "Not specified"}
 **Confirmed Verticals:** ${verticalsText}
+
+## Recommended Sources (ranked by quality for this industry)
+
+Prioritize these curated and learned sources when researching. They have been verified to produce accurate, relevant insights for ${industry || "this"} companies. Use them as your first-pass search targets before going broader:
+
+${sourcesList}
+
+---
 
 Perform a complete innovation opportunity analysis for ${company_name}. Today's date is ${currentDate}. Follow all phases of the research protocol, score all dimensions with sub-indicators, and produce the full JSON output.`;
 
@@ -332,6 +382,27 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       .from("analyses")
       .update({ analysis_status: "complete" })
       .eq("id", analysis_id);
+
+    // Log source usage into source_quality for the learning loop
+    try {
+      const usedSources = (analysisData.sources || []) as Array<{ url?: string; verified?: boolean }>;
+      const resolvedIndustry = analysisData.industry || industry || "General";
+      for (const src of usedSources) {
+        if (!src.url) continue;
+        let domain = "";
+        try {
+          domain = new URL(src.url).hostname.replace(/^www\./, "");
+        } catch { continue; }
+        await supabase.rpc("update_source_usage", {
+          p_domain: domain,
+          p_url: src.url,
+          p_vertical: resolvedIndustry,
+          p_verified: src.verified !== false, // treat as verified unless explicitly false
+        });
+      }
+    } catch (srcError) {
+      console.error("Source usage logging failed (non-critical):", srcError);
+    }
 
     // Trigger ecosystem matching as fire-and-forget (don't await)
     // The matching function runs independently and inserts into ecosystem_matches when done
