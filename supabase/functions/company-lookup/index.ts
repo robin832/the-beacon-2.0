@@ -7,10 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Load prompt from shared file — single source of truth
-const SYSTEM_PROMPT = await Deno.readTextFile(
-  new URL("../_shared/prompts/company-lookup.md", import.meta.url)
-);
+// Load prompt from shared module — edit _shared/prompts/company-lookup.md then regenerate
+import { COMPANY_LOOKUP_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-company-lookup.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -128,23 +126,25 @@ Deno.serve(async (req) => {
 
     // Log to ai_logs
     const publicClient = createClient(supabaseUrl, supabaseServiceKey);
-    await publicClient.from("ai_logs").insert({
-      feature: "company_lookup",
-      model: "claude-sonnet-4-20250514",
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      latency_ms: latencyMs,
-      metadata: { company_name, session_id },
-    }).catch(() => {});
+    try {
+      await publicClient.from("ai_logs").insert({
+        feature: "company_lookup",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        latency_ms: latencyMs,
+        metadata: { company_name, session_id },
+      });
+    } catch { /* logging failure is non-critical */ }
 
     return new Response(
       JSON.stringify({ candidates }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Company lookup error:", error);
+    console.error("Company lookup error:", error?.message || error, JSON.stringify(error));
     return new Response(
-      JSON.stringify({ error: "Failed to look up company" }),
+      JSON.stringify({ error: "Failed to look up company", detail: String(error?.message || error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

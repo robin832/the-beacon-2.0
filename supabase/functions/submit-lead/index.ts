@@ -68,15 +68,16 @@ Deno.serve(async (req) => {
 
     // Log interaction
     if (session_id) {
-      await supabase
-        .from("interactions")
-        .insert({
-          session_id,
-          event_type: "lead_submitted",
-          page: "/report",
-          metadata: { lead_id: lead.id, lead_type, rating },
-        })
-        .catch(() => {});
+      try {
+        await supabase
+          .from("interactions")
+          .insert({
+            session_id,
+            event_type: "lead_submitted",
+            page: "/report",
+            metadata: { lead_id: lead.id, lead_type, rating },
+          });
+      } catch { /* interaction logging is non-critical */ }
     }
 
     return new Response(

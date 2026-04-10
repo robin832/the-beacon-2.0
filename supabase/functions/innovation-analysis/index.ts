@@ -7,10 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Load prompt from shared file — single source of truth
-const SYSTEM_PROMPT = await Deno.readTextFile(
-  new URL("../_shared/prompts/innovation-analysis.md", import.meta.url)
-);
+// Load prompt from shared module — edit _shared/prompts/innovation-analysis.md then regenerate
+import { INNOVATION_ANALYSIS_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-innovation-analysis.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -162,13 +160,13 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 8000,
+        max_tokens: 6000,
         system: SYSTEM_PROMPT,
         tools: [
           {
             type: "web_search_20250305",
             name: "web_search",
-            max_uses: 15,
+            max_uses: 3,
           },
         ],
         messages: [
@@ -178,6 +176,16 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
     });
 
     const result = await response.json();
+
+    // Log Claude API response status for debugging
+    if (result.error || result.type === "error") {
+      console.error("Claude API error:", JSON.stringify(result));
+      await supabase.from("analyses").update({ analysis_status: "error" }).eq("id", analysis_id);
+      return new Response(
+        JSON.stringify({ error: "Claude API error", detail: result.error?.message || result.message || JSON.stringify(result) }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     let outputText = "";
     let inputTokens = result.usage?.input_tokens || 0;
@@ -189,17 +197,34 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       }
     }
 
-    // Parse the analysis JSON
+    console.log("Claude response - tokens:", inputTokens, "/", outputTokens, "- text length:", outputText.length);
+
+    // Parse the analysis JSON — handle markdown code fences and nested braces
     let analysisData;
     try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        analysisData = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found");
+      // First try: strip markdown code fences if present
+      let jsonText = outputText;
+      const fenceMatch = outputText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) {
+        jsonText = fenceMatch[1].trim();
       }
+
+      // Find the outermost JSON object
+      const startIdx = jsonText.indexOf('{');
+      if (startIdx === -1) throw new Error("No JSON object found in response");
+
+      // Find matching closing brace by counting nesting
+      let depth = 0;
+      let endIdx = -1;
+      for (let i = startIdx; i < jsonText.length; i++) {
+        if (jsonText[i] === '{') depth++;
+        else if (jsonText[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
+      }
+      if (endIdx === -1) throw new Error("Unbalanced JSON braces");
+
+      analysisData = JSON.parse(jsonText.substring(startIdx, endIdx + 1));
     } catch (parseError) {
-      console.error("Failed to parse analysis:", parseError);
+      console.error("Failed to parse analysis:", parseError, "Raw output (first 500 chars):", outputText.substring(0, 500));
       await supabase
         .from("analyses")
         .update({ analysis_status: "error" })
@@ -302,49 +327,59 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       await supabase.from("maturity_dimensions").insert(dimensionRows);
     }
 
-    // Trigger ecosystem matching
-    try {
-      await fetch(`${supabaseUrl}/functions/v1/ecosystem-matching`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({ analysis_id }),
-      });
-    } catch (matchError) {
-      console.error("Ecosystem matching trigger failed:", matchError);
-    }
-
-    // Mark as complete
+    // Mark analysis as complete BEFORE triggering matching (matching is async)
     await supabase
       .from("analyses")
       .update({ analysis_status: "complete" })
       .eq("id", analysis_id);
 
+    // Trigger ecosystem matching as fire-and-forget (don't await)
+    // The matching function runs independently and inserts into ecosystem_matches when done
+    fetch(`${supabaseUrl}/functions/v1/ecosystem-matching`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ analysis_id }),
+    }).catch((matchError) => {
+      console.error("Ecosystem matching trigger failed:", matchError);
+    });
+
     const latencyMs = Date.now() - startTime;
 
     // Log to ai_logs
-    await publicClient
-      .from("ai_logs")
-      .insert({
-        feature: "innovation_analysis",
-        model: "claude-sonnet-4-20250514",
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        latency_ms: latencyMs,
-        metadata: { analysis_id, company_name, session_id },
-      })
-      .catch(() => {});
+    try {
+      await publicClient
+        .from("ai_logs")
+        .insert({
+          feature: "innovation_analysis",
+          model: "claude-sonnet-4-20250514",
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          latency_ms: latencyMs,
+          metadata: { analysis_id, company_name, session_id },
+        });
+    } catch { /* logging failure is non-critical */ }
 
     return new Response(
       JSON.stringify({ success: true, analysis_id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Innovation analysis error:", error);
+    console.error("Innovation analysis error:", error?.message || error);
+    // Reset stuck status
+    try {
+      const { analysis_id } = await req.clone().json().catch(() => ({}));
+      if (analysis_id) {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const errorClient = createClient(supabaseUrl, supabaseServiceKey, { db: { schema: "innovation" } });
+        await errorClient.from("analyses").update({ analysis_status: "error" }).eq("id", analysis_id);
+      }
+    } catch { /* best effort */ }
     return new Response(
-      JSON.stringify({ error: "Analysis failed" }),
+      JSON.stringify({ error: "Analysis failed", detail: String(error?.message || error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

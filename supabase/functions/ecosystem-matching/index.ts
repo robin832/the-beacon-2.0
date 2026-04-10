@@ -7,10 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Load prompt from shared file — single source of truth
-const SYSTEM_PROMPT = await Deno.readTextFile(
-  new URL("../_shared/prompts/ecosystem-matching.md", import.meta.url)
-);
+// Load prompt from shared module — edit _shared/prompts/ecosystem-matching.md then regenerate
+import { ECOSYSTEM_MATCHING_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-ecosystem-matching.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
