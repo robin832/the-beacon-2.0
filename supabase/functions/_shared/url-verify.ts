@@ -21,6 +21,33 @@ function isValidUrlString(url: string | null | undefined): url is string {
   }
 }
 
+/**
+ * Heuristic: a URL is "deep" (likely a specific article/case page) rather than
+ * a generic homepage when its path has at least one non-trivial segment.
+ * Accepts /case-studies/foo, /news/2025/something. Rejects /, /en, /products.
+ */
+export function isDeepLink(url: string | null | undefined): boolean {
+  if (!isValidUrlString(url)) return false;
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.split("/").filter(Boolean);
+    if (segments.length === 0) return false;
+    if (segments.length === 1) {
+      const only = segments[0].toLowerCase();
+      // Single short segments like /en, /nl, /products, /about are still homepage-ish.
+      if (only.length < 8) return false;
+      const generic = new Set([
+        "products", "services", "about", "contact", "company",
+        "home", "index", "solutions", "platform", "overview",
+      ]);
+      if (generic.has(only)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyUrl(
   url: string | null | undefined,
   timeoutMs = DEFAULT_TIMEOUT_MS,

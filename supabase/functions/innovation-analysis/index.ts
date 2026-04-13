@@ -10,7 +10,27 @@ const corsHeaders = {
 // Load prompt from shared module — edit _shared/prompts/innovation-analysis.md then regenerate
 import { INNOVATION_ANALYSIS_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-innovation-analysis.ts";
 import { getCuratedSources } from "../_shared/curated-sources.ts";
-import { verifySourceUrls, verifyUrl } from "../_shared/url-verify.ts";
+import { verifySourceUrls, verifyUrl, isDeepLink } from "../_shared/url-verify.ts";
+
+// Sonnet 4 pricing (USD per token). Update if Anthropic adjusts.
+const SONNET_4_PRICING = {
+  input_per_token: 3 / 1_000_000,
+  output_per_token: 15 / 1_000_000,
+  // Web search is billed per 1000 searches at $10.
+  web_search_per_use: 10 / 1000,
+};
+
+function computeCostUsd(
+  inputTokens: number,
+  outputTokens: number,
+  webSearchCount: number,
+): number {
+  return (
+    inputTokens * SONNET_4_PRICING.input_per_token +
+    outputTokens * SONNET_4_PRICING.output_per_token +
+    webSearchCount * SONNET_4_PRICING.web_search_per_use
+  );
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -55,99 +75,30 @@ Deno.serve(async (req) => {
 
     const hasFeedback = !!(feedback_context && (feedback_context.feedback || feedback_context.rating));
 
-    // Check for recent cached analysis (same company in last 7 days).
-    // Regeneration runs with `feedback_context` — we bypass the cache in that
-    // case because the user explicitly wants a fresh analysis that incorporates
-    // their corrections.
-    const { data: cached } = hasFeedback ? { data: null } : await supabase
+    // Look up the most recent prior analysis for this company so we can run
+    // an *enrichment* pass instead of starting from scratch. We always run a
+    // full analysis (the user expects the AI to think), but when prior data
+    // exists we feed it in as "current best knowledge" and ask Claude to
+    // improve/correct/extend rather than rebuild.
+    const { data: priorRows } = await supabase
       .from("analyses")
-      .select("id")
+      .select("id, full_analysis_json, sources, recommended_offerings, innovation_gaps, beacon_relevance")
       .ilike("company_name", company_name)
       .eq("analysis_status", "complete")
-      .gt("analyzed_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .neq("id", analysis_id)
       .order("analyzed_at", { ascending: false })
       .limit(1);
 
-    if (cached && cached.length > 0) {
-      // Copy the existing analysis data to the new record
-      const { data: existing } = await supabase
-        .from("analyses")
-        .select("*")
-        .eq("id", cached[0].id)
-        .single();
+    const priorAnalysis = priorRows && priorRows.length > 0 ? priorRows[0] : null;
+    const runType: "fresh" | "iteration" = priorAnalysis ? "iteration" : "fresh";
 
-      if (existing) {
-        await supabase
-          .from("analyses")
-          .update({
-            overall_score: existing.overall_score,
-            maturity_level: existing.maturity_level,
-            industry: existing.industry,
-            company_type: existing.company_type,
-            technologies_detected: existing.technologies_detected,
-            strategic_goals: existing.strategic_goals,
-            active_projects: existing.active_projects,
-            innovation_gaps: existing.innovation_gaps,
-            pain_points_detected: existing.pain_points_detected,
-            beacon_relevance: existing.beacon_relevance,
-            recommended_offerings: existing.recommended_offerings,
-            industry_context: existing.industry_context,
-            industry_landscape: existing.industry_landscape,
-            data_confidence: existing.data_confidence,
-            data_confidence_explanation: existing.data_confidence_explanation,
-            surprising_insight: existing.surprising_insight,
-            quick_win: existing.quick_win,
-            sources: existing.sources,
-            research_data: existing.research_data,
-            full_analysis_json: existing.full_analysis_json,
-            previous_analysis_id: cached[0].id,
-            analysis_status: "complete",
-          })
-          .eq("id", analysis_id);
-
-        // Copy maturity dimensions
-        const { data: existingDims } = await supabase
-          .from("maturity_dimensions")
-          .select("*")
-          .eq("analysis_id", cached[0].id);
-
-        if (existingDims && existingDims.length > 0) {
-          const dimRows = existingDims.map((d: Record<string, unknown>) => ({
-            analysis_id,
-            dimension_name: d.dimension_name,
-            dimension: d.dimension_name,
-            score: d.score,
-            weight: d.weight,
-            evidence: d.evidence,
-            key_findings: d.key_findings || [],
-            sub_scores: d.sub_scores || {},
-            insight: d.insight,
-          }));
-          await supabase.from("maturity_dimensions").insert(dimRows);
-        }
-
-        // Trigger ecosystem matching in the background via waitUntil
-        const cachedMatchingTask = fetch(`${supabaseUrl}/functions/v1/ecosystem-matching`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({ analysis_id }),
-        }).catch(() => { /* matching is optional */ });
-        // deno-lint-ignore no-explicit-any
-        const edgeRuntimeCached = (globalThis as any).EdgeRuntime;
-        if (edgeRuntimeCached?.waitUntil) {
-          edgeRuntimeCached.waitUntil(cachedMatchingTask);
-        }
-
-        return new Response(
-          JSON.stringify({ success: true, analysis_id, cached: true }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
+    await supabase
+      .from("analyses")
+      .update({
+        run_type: runType,
+        previous_analysis_id: priorAnalysis?.id ?? null,
+      })
+      .eq("id", analysis_id);
 
     // Update status: researching
     await supabase
@@ -203,6 +154,43 @@ Deno.serve(async (req) => {
       return `- ${s.url}${scoreNote}${desc}`;
     }).join("\n");
 
+    // Compact view of prior knowledge, used for enrichment runs.
+    const priorSection = priorAnalysis
+      ? `
+
+## Existing Knowledge On This Company (from a previous analysis)
+
+We already have prior research on ${company_name}. Treat this as the *current best knowledge*.
+Your job on this run is to **improve, enrich, and correct** it — do not start from scratch.
+- Reuse what is still accurate; refine wording where you can be more specific.
+- Add any new initiatives, technologies, partnerships, or projects you find in fresh searches.
+- Replace generic claims with concrete evidence (named projects, dates, partners, numbers).
+- If you find something that contradicts the prior data, override it and note the change in evidence.
+
+Prior structured analysis (truncated):
+\`\`\`json
+${JSON.stringify({
+  innovation_gaps: priorAnalysis.innovation_gaps,
+  recommended_offerings: priorAnalysis.recommended_offerings,
+  beacon_relevance: priorAnalysis.beacon_relevance,
+  sources: Array.isArray(priorAnalysis.sources) ? (priorAnalysis.sources as Array<unknown>).slice(0, 12) : [],
+}).slice(0, 6000)}
+\`\`\`
+`
+      : "";
+
+    const sourceQualitySection = `
+
+## Source Quality Requirements (strict)
+
+For every \`real_world_example\` (use case) you cite:
+1. The \`url\` MUST point to a page that **describes that specific use case** — a case study, project page, press release, or news article. Do **not** link to the company's homepage, generic /about page, or product overview.
+2. Use cases MUST come from **distinct organizations** — never reuse the same company across two examples in the same analysis.
+3. If you cannot find a deep, specific URL for a use case, prefer to drop the example over linking to a homepage. Set \`url\` to null in that case.
+
+Sources in the top-level \`sources\` array follow the same rule: prefer specific articles over root domains.
+`;
+
     const feedbackSection = hasFeedback
       ? `
 
@@ -234,7 +222,7 @@ Instructions for handling the feedback:
 Prioritize these curated and learned sources when researching. They have been verified to produce accurate, relevant insights for ${industry || "this"} companies. Use them as your first-pass search targets before going broader:
 
 ${sourcesList}
-${feedbackSection}
+${priorSection}${sourceQualitySection}${feedbackSection}
 ---
 
 Perform a complete innovation opportunity analysis for ${company_name}. Today's date is ${currentDate}. Follow all phases of the research protocol, score all dimensions with sub-indicators, and produce the full JSON output.`;
@@ -304,14 +292,23 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
     }
 
     let outputText = "";
-    let inputTokens = result.usage?.input_tokens || 0;
-    let outputTokens = result.usage?.output_tokens || 0;
+    const inputTokens = result.usage?.input_tokens || 0;
+    const outputTokens = result.usage?.output_tokens || 0;
+    let webSearchCount = 0;
 
     for (const block of result.content || []) {
       if (block.type === "text") {
         outputText += block.text;
+      } else if (block.type === "server_tool_use" && block.name === "web_search") {
+        webSearchCount += 1;
       }
     }
+    // Anthropic also reports server_tool_use counts in usage when available.
+    if (typeof result.usage?.server_tool_use?.web_search_requests === "number") {
+      webSearchCount = result.usage.server_tool_use.web_search_requests;
+    }
+
+    const costUsd = computeCostUsd(inputTokens, outputTokens, webSearchCount);
 
     console.log("Claude response - tokens:", inputTokens, "/", outputTokens, "- text length:", outputText.length);
 
@@ -368,15 +365,29 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       console.error("Source URL verification failed (non-critical):", verifyErr);
     }
 
-    // Verify real-world example URLs in innovation_opportunities. If a URL
-    // can't be verified we null it out so the frontend falls back to the
-    // text-only example (company + what_they_did + result).
+    // Verify real-world example URLs in innovation_opportunities. We require
+    // each URL to (a) resolve and (b) be a deep link (not a homepage). We also
+    // dedupe by organization so the same company never appears across multiple
+    // examples — the second occurrence has its url nulled out (frontend falls
+    // back to text-only).
     try {
       if (Array.isArray(analysisData.innovation_opportunities)) {
+        const seenOrgs = new Set<string>();
         await Promise.all(
-          analysisData.innovation_opportunities.map(async (opp: { real_world_example?: { url?: string | null } }) => {
+          analysisData.innovation_opportunities.map(async (opp: { real_world_example?: { url?: string | null; company?: string | null } }) => {
             const rwe = opp.real_world_example;
-            if (rwe?.url) {
+            if (!rwe) return;
+            const orgKey = (rwe.company || "").trim().toLowerCase();
+            if (orgKey && seenOrgs.has(orgKey)) {
+              rwe.url = null;
+              return;
+            }
+            if (orgKey) seenOrgs.add(orgKey);
+            if (rwe.url) {
+              if (!isDeepLink(rwe.url)) {
+                rwe.url = null;
+                return;
+              }
               const ok = await verifyUrl(rwe.url);
               if (!ok) rwe.url = null;
             }
@@ -476,7 +487,10 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
     // Mark analysis as complete BEFORE triggering matching (matching is async)
     await supabase
       .from("analyses")
-      .update({ analysis_status: "complete" })
+      .update({
+        analysis_status: "complete",
+        analysis_cost_usd: costUsd,
+      })
       .eq("id", analysis_id);
 
     // Log source usage into source_quality for the learning loop.
@@ -571,7 +585,15 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           latency_ms: latencyMs,
-          metadata: { analysis_id, company_name, session_id },
+          cost_usd: costUsd,
+          metadata: {
+            analysis_id,
+            company_name,
+            session_id,
+            run_type: runType,
+            web_search_count: webSearchCount,
+            previous_analysis_id: priorAnalysis?.id ?? null,
+          },
         });
     } catch { /* logging failure is non-critical */ }
 

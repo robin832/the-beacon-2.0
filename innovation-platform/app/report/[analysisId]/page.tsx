@@ -18,6 +18,23 @@ import RatingAndCTA from '@/components/report/RatingAndCTA';
 import SourcesWidget from '@/components/report/SourcesWidget';
 import Footer from '@/components/layout/Footer';
 
+type CatalogEntry = {
+  kind: 'product' | 'membership';
+  name: string;
+  description: string | null;
+  meta: string | null;
+  benefits: string[] | null;
+};
+
+function findCatalogMatch(name: string, catalog: CatalogEntry[]): CatalogEntry | null {
+  if (!name) return null;
+  const norm = name.toLowerCase().trim();
+  let exact = catalog.find((c) => c.name.toLowerCase() === norm);
+  if (exact) return exact;
+  exact = catalog.find((c) => norm.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(norm));
+  return exact || null;
+}
+
 function isValidHttpUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') return false;
   try {
@@ -34,17 +51,35 @@ export default function ReportPage() {
 
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [dimensions, setDimensions] = useState<MaturityDimension[]>([]);
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('');
 
   useEffect(() => {
     async function load() {
-      const [analysisRes, dimensionsRes] = await Promise.all([
+      const [analysisRes, dimensionsRes, productsRes, plansRes] = await Promise.all([
         supabase.from('analyses').select('*').eq('id', analysisId).single(),
         supabase.from('maturity_dimensions').select('*').eq('analysis_id', analysisId).order('weight', { ascending: false }),
+        supabase.schema('public').from('products').select('name, description, category').eq('is_active', true),
+        supabase.schema('public').from('membership_plans').select('name, description, target_audience, benefits').eq('is_active', true).order('display_order', { ascending: true }),
       ]);
       if (analysisRes.data) setAnalysis(analysisRes.data as Analysis);
       if (dimensionsRes.data) setDimensions(dimensionsRes.data as MaturityDimension[]);
+      const products: CatalogEntry[] = (productsRes.data || []).map((p) => ({
+        kind: 'product',
+        name: p.name,
+        description: p.description,
+        meta: p.category || null,
+        benefits: null,
+      }));
+      const plans: CatalogEntry[] = (plansRes.data || []).map((p) => ({
+        kind: 'membership',
+        name: p.name,
+        description: p.description,
+        meta: p.target_audience || null,
+        benefits: Array.isArray(p.benefits) ? (p.benefits as unknown[]).map(String).slice(0, 4) : null,
+      }));
+      setCatalog([...plans, ...products]);
       setLoading(false);
     }
     load();
@@ -261,17 +296,40 @@ export default function ReportPage() {
                   </p>
                 )}
                 <div className="space-y-3">
-                  {analysis.recommended_offerings.map((offering, i) => (
-                    <Card key={i} className="p-5" hover>
-                      <div className="flex items-start gap-3">
-                        {i === 0 && <Badge variant="default" className="flex-shrink-0">Best Match</Badge>}
-                        <div>
-                          <h4 className="font-bold text-beacon-dark-teal">{offering.offering}</h4>
-                          <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">{offering.match_reason}</p>
+                  {analysis.recommended_offerings.map((offering, i) => {
+                    const match = findCatalogMatch(offering.offering, catalog);
+                    return (
+                      <Card key={i} className="p-5" hover>
+                        <div className="flex items-start gap-3">
+                          {i === 0 && <Badge variant="default" className="flex-shrink-0">Best Match</Badge>}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-beacon-dark-teal">{match?.name || offering.offering}</h4>
+                              {match && (
+                                <span className="text-[9px] font-mono tracking-widest uppercase text-beacon-cyan border border-beacon-cyan/30 bg-beacon-cyan/5 px-2 py-0.5 rounded">
+                                  {match.kind === 'membership' ? 'Membership' : 'Service'}
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-sm text-beacon-dark-teal/70 leading-relaxed">{offering.match_reason}</p>
+                            {match?.description && (
+                              <p className="mt-2 text-xs text-beacon-medium-gray leading-relaxed">{match.description}</p>
+                            )}
+                            {match?.benefits && match.benefits.length > 0 && (
+                              <ul className="mt-3 space-y-1">
+                                {match.benefits.map((b, j) => (
+                                  <li key={j} className="text-xs text-beacon-dark-teal/70 flex items-start gap-1.5">
+                                    <span className="text-beacon-cyan mt-0.5">&#x2713;</span>
+                                    <span>{b}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </Card>
-                  ))}
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
             )}

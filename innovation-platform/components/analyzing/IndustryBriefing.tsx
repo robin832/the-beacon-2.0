@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   getIndustryContent,
+  IndustryFact,
   IndustryHeadline,
   IndustryQuote,
   IndustryPoll,
@@ -34,6 +35,9 @@ export default function IndustryBriefing({ industry }: IndustryBriefingProps) {
 
       {/* Scrolling news ticker */}
       <NewsTicker headlines={content.headlines} />
+
+      {/* Rotating fun facts / stats */}
+      <FunFacts facts={content.facts} />
 
       {/* Alternating witty quotes + interactive poll */}
       <QuotesAndPoll quotes={content.quotes} poll={content.poll} industry={industry} />
@@ -82,6 +86,36 @@ function NewsTicker({ headlines }: { headlines: IndustryHeadline[] }) {
           </a>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ---- Fun Facts rotator ---- */
+
+const FACT_ROTATION_MS = 7000;
+
+function FunFacts({ facts }: { facts: IndustryFact[] }) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (facts.length === 0) return;
+    const t = setInterval(() => setI((n) => (n + 1) % facts.length), FACT_ROTATION_MS);
+    return () => clearInterval(t);
+  }, [facts.length]);
+
+  if (facts.length === 0) return null;
+  const fact = facts[i];
+
+  return (
+    <div className="bg-beacon-cyan/5 border border-beacon-cyan/20 rounded-lg px-4 py-3">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[9px] font-mono tracking-widest uppercase text-beacon-cyan">
+          &#x1F4A1; Did you know
+        </span>
+        <span className="text-[9px] font-mono text-white/30 truncate">&mdash; {fact.source}</span>
+      </div>
+      <p key={i} className="text-xs text-white/80 leading-relaxed" style={{ animation: 'fadeInUp 0.4s ease-out' }}>
+        {fact.stat}
+      </p>
     </div>
   );
 }
