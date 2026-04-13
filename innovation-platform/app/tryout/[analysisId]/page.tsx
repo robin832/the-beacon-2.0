@@ -7,8 +7,8 @@ import Footer from '@/components/layout/Footer';
 import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
 import PageTransition from '@/components/ui/PageTransition';
-import ContactForm from '@/components/report/ContactForm';
 import { supabase } from '@/lib/supabase';
+import { getSessionId } from '@/lib/session';
 import { trackEvent } from '@/lib/tracking';
 import { Analysis, EcosystemMatch, MatchDetails, MatchEvidence } from '@/lib/types';
 
@@ -36,7 +36,6 @@ export default function TryoutPage() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [matches, setMatches] = useState<EcosystemMatch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showContactForm, setShowContactForm] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -122,10 +121,10 @@ export default function TryoutPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {visibleMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} locked={false} />
+                  <MatchCard key={match.id} match={match} locked={false} analysisId={analysisId} />
                 ))}
                 {lockedMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} locked={true} />
+                  <MatchCard key={match.id} match={match} locked={true} analysisId={analysisId} />
                 ))}
               </div>
             </div>
@@ -197,8 +196,7 @@ export default function TryoutPage() {
 
             {/* Book a Visit CTA */}
             <div className="bg-beacon-dark-teal rounded-lg p-8 sm:p-12">
-              {!showContactForm ? (
-                <div className="flex flex-col sm:flex-row items-center gap-8">
+              <div className="flex flex-col sm:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
                     <img
                       src="/robin.jpg"
@@ -227,20 +225,16 @@ export default function TryoutPage() {
                       >
                         Book a Visit with Robin &rarr;
                       </a>
-                      <button
-                        onClick={() => setShowContactForm(true)}
+                      <a
+                        href={`mailto:contact@thebeacon.eu?subject=${encodeURIComponent(`Tryout interest — ${analysis.company_name}`)}&body=${encodeURIComponent(`Hi Robin,\n\nI just unlocked the free tryout for ${analysis.company_name} and would love to follow up.\n\n`)}`}
+                        onClick={() => trackEvent('send_message_click', '/tryout', { analysis_id: analysisId })}
                         className="inline-flex items-center justify-center h-14 px-10 border-2 border-white/20 hover:border-white/40 text-white uppercase tracking-widest font-medium rounded transition-all duration-300 text-sm"
                       >
                         Send a Message
-                      </button>
+                      </a>
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="max-w-lg mx-auto">
-                  <ContactForm analysisId={analysisId} companyName={analysis.company_name} rating={0} />
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -250,7 +244,48 @@ export default function TryoutPage() {
   );
 }
 
-const CARD_HEIGHT = 'h-[520px]';
+const CARD_HEIGHT = 'h-[440px]';
+
+function MatchFeedback({ matchId, analysisId }: { matchId: string; analysisId: string }) {
+  const [submitted, setSubmitted] = useState<'up' | 'down' | null>(null);
+  const submit = async (isValuable: boolean) => {
+    const choice = isValuable ? 'up' : 'down';
+    if (submitted) return;
+    setSubmitted(choice);
+    try {
+      await supabase.from('ecosystem_match_feedback').insert({
+        ecosystem_match_id: matchId,
+        analysis_id: analysisId,
+        session_id: getSessionId(),
+        is_valuable: isValuable,
+      });
+      trackEvent('match_feedback', '/tryout', { match_id: matchId, valuable: isValuable });
+    } catch (err) {
+      console.error('Match feedback failed:', err);
+    }
+  };
+  return (
+    <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t border-beacon-border">
+      <span className="text-[9px] font-mono tracking-widest uppercase text-beacon-medium-gray">
+        {submitted ? 'Thanks for your feedback' : 'Is this match valuable?'}
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => submit(true)}
+          disabled={!!submitted}
+          aria-label="Valuable match"
+          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${submitted === 'up' ? 'bg-beacon-cyan/20 text-beacon-cyan' : 'hover:bg-beacon-light-gray text-beacon-medium-gray'}`}
+        >&#x1F44D;</button>
+        <button
+          onClick={() => submit(false)}
+          disabled={!!submitted}
+          aria-label="Not a good match"
+          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${submitted === 'down' ? 'bg-beacon-orange/20 text-beacon-orange' : 'hover:bg-beacon-light-gray text-beacon-medium-gray'}`}
+        >&#x1F44E;</button>
+      </div>
+    </div>
+  );
+}
 
 function TierBadge({ tier, muted = false }: { tier: string | null | undefined; muted?: boolean }) {
   if (!tier) return null;
@@ -316,10 +351,9 @@ function EvidenceRow({
   );
 }
 
-function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }) {
+function MatchCard({ match, locked, analysisId }: { match: EcosystemMatch; locked: boolean; analysisId: string }) {
   const details: MatchDetails = (match.match_details as MatchDetails) || {};
   const teaserText = details.teaser_text || null;
-  const conversationStarter = details.conversation_starter || null;
   const tier = details.membership_tier || null;
   const website = match.account_website;
   const evidence: MatchEvidence[] = (match.match_evidence as MatchEvidence[]) || [];
@@ -375,7 +409,7 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
     );
   }
 
-  const sharedSectors = (match.shared_themes || []).slice(0, 2);
+  const topEvidence = evidence[0];
 
   return (
     <Card className={`p-5 border-beacon-cyan/30 flex flex-col ${CARD_HEIGHT}`}>
@@ -388,7 +422,7 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
       </div>
 
       {/* Company name */}
-      <div className="flex items-start justify-between gap-2 mb-3">
+      <div className="flex items-start justify-between gap-2 mb-4">
         <h3 className="text-lg font-bold text-beacon-dark-teal leading-tight">
           {match.account_name || 'Beacon Member'}
         </h3>
@@ -407,59 +441,26 @@ function MatchCard({ match, locked }: { match: EcosystemMatch; locked: boolean }
         )}
       </div>
 
-      {/* Rationale — "How they can help you" */}
-      {match.match_rationale && (
-        <p className="text-xs text-beacon-dark-teal/70 leading-relaxed mb-3 line-clamp-3">
-          {match.match_rationale}
-        </p>
-      )}
-
-      {/* Evidence rows — two-column visual cards */}
-      {evidence.length > 0 && (
-        <div className="space-y-2 mb-3">
-          {evidence.slice(0, 2).map((ev, i) => (
-            <div key={i}>
-              <EvidenceRow evidence={ev} />
-              {isValidHttpUrl(ev.evidence_url) && (
-                <a
-                  href={ev.evidence_url!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block mt-1 text-[9px] font-mono text-beacon-cyan hover:underline truncate"
-                >
-                  See their {ev.evidence_title || 'solution'} &rarr;
-                </a>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Conversation starter callout */}
-      {conversationStarter && (
-        <div className="mt-auto mb-3 bg-beacon-cyan/5 border-l-2 border-beacon-cyan rounded-r p-2.5">
-          <div className="flex items-start gap-1.5">
-            <span className="text-sm flex-shrink-0">&#x1F4AC;</span>
-            <p className="text-[10px] text-beacon-dark-teal/80 italic leading-snug">
-              &ldquo;{conversationStarter}&rdquo;
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom: sector tags */}
-      {sharedSectors.length > 0 && (
-        <div className={`${conversationStarter ? '' : 'mt-auto'} pt-3 border-t border-beacon-border flex items-center gap-1.5 flex-wrap`}>
-          {sharedSectors.map((s, i) => (
-            <span
-              key={i}
-              className="text-[9px] font-mono tracking-widest uppercase bg-beacon-light-gray text-beacon-dark-teal/60 px-2 py-0.5 rounded"
+      {/* Single best need → capability mapping */}
+      {topEvidence && (
+        <div className="mb-3">
+          <EvidenceRow evidence={topEvidence} />
+          {isValidHttpUrl(topEvidence.evidence_url) && (
+            <a
+              href={topEvidence.evidence_url!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block mt-2 text-[10px] font-mono text-beacon-cyan hover:underline truncate"
             >
-              {s}
-            </span>
-          ))}
+              See their {topEvidence.evidence_title || 'use case'} &rarr;
+            </a>
+          )}
         </div>
       )}
+
+      <div className="mt-auto">
+        <MatchFeedback matchId={match.id} analysisId={analysisId} />
+      </div>
     </Card>
   );
 }

@@ -62,7 +62,7 @@ export default function TerminalLoader({ analysisStatus, embedded = false }: Ter
       <div className={embedded ? 'relative z-20 w-full' : 'relative z-20 max-w-xl w-full px-6'}>
         {/* Logo */}
         <div className="text-center mb-12">
-          <img src="/logo-white.svg" alt="The Beacon" className="h-8 mx-auto opacity-20" />
+          <img src="/logo-white.png" alt="The Beacon" className="h-8 mx-auto opacity-20" />
         </div>
 
         {/* Terminal window */}

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 
 export default function Header({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
-  const logo = variant === 'dark' ? '/logo-white.svg' : '/logo-dark.svg';
+  const logo = variant === 'dark' ? '/logo-white.png' : '/logo-dark.png';
 
   return (
     <header className={`fixed top-0 left-0 right-0 z-50 ${variant === 'dark' ? 'bg-beacon-dark-teal' : 'bg-beacon-light-gray border-b border-beacon-border'}`}>
