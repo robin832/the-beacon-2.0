@@ -237,6 +237,9 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
     // is long (80-120s) so we can only afford a single retry with a short
     // backoff before risking the 150s edge function timeout.
     const callAnthropic = async () => {
+      // Hard-cap the Anthropic call below the 150s edge-function ceiling so
+      // the surrounding catch block can run and mark the analysis as 'error'
+      // instead of leaving the row frozen on 'analyzing'.
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -244,6 +247,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
           "x-api-key": anthropicKey,
           "anthropic-version": "2023-06-01",
         },
+        signal: AbortSignal.timeout(130_000),
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 8000,
@@ -252,11 +256,10 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
             {
               type: "web_search_20250305",
               name: "web_search",
-              // 10 searches: ~5 company research, ~3-4 real-world example verification,
-              // ~1-2 industry context. Bumped from 8 to 10 after observing analyses
-              // with as few as 3 sources — the prompt now requires 8+ distinct sources
-              // and verified URLs for each of 3 real-world examples.
-              max_uses: 10,
+              // 8 searches keeps total wall-clock comfortably under the 150s
+              // edge-function ceiling. Bumping to 10 (commit 2ba7036) caused
+              // intermittent 546 timeouts — see Group-GTS run on 2026-04-13.
+              max_uses: 8,
             },
           ],
           messages: [
