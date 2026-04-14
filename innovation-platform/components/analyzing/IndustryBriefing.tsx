@@ -5,7 +5,6 @@ import {
   getIndustryContent,
   IndustryFact,
   IndustryHeadline,
-  IndustryQuote,
   IndustryPoll,
   PollOption,
 } from '@/lib/industry-content';
@@ -14,9 +13,6 @@ import { trackEvent } from '@/lib/tracking';
 interface IndustryBriefingProps {
   industry: string | null;
 }
-
-const QUOTE_ROTATION_MS = 8000;
-const QUOTES_BEFORE_POLL = 2;
 
 export default function IndustryBriefing({ industry }: IndustryBriefingProps) {
   const content = getIndustryContent(industry);
@@ -38,19 +34,14 @@ export default function IndustryBriefing({ industry }: IndustryBriefingProps) {
         Usually takes 60&ndash;90 seconds. Deep analyses can run up to 3 minutes.
       </p>
 
-      {/* Scrolling news ticker */}
+      {/* Scrolling news ticker (non-clickable — headlines are illustrative) */}
       <NewsTicker headlines={content.headlines} />
 
       {/* Rotating fun facts / stats */}
       <FunFacts facts={content.facts} />
 
-      {/* Alternating witty quotes + interactive poll */}
-      <QuotesAndPoll quotes={content.quotes} polls={content.polls} industry={industry} />
-
-      {/* Footer hint */}
-      <p className="text-[10px] font-mono tracking-widest uppercase text-white/20 text-center pt-2">
-        &#x1F4A1; While your report generates, here&apos;s something to think about&hellip;
-      </p>
+      {/* Interactive poll sequence — each poll shown at most once */}
+      <PollSequence polls={content.polls} industry={industry} />
     </div>
   );
 }
@@ -75,20 +66,16 @@ function NewsTicker({ headlines }: { headlines: IndustryHeadline[] }) {
         }}
       >
         {doubled.map((h, i) => (
-          <a
+          <div
             key={i}
-            href={h.url || '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => { if (!h.url) e.preventDefault(); }}
-            className="flex items-center gap-3 shrink-0 px-6 hover:bg-white/5 h-full transition-colors"
+            className="flex items-center gap-3 shrink-0 px-6 h-full"
           >
             <span className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan">
               {h.source}
             </span>
             <span className="text-[10px] font-mono text-white/20">&bull;</span>
             <span className="text-xs text-white/70">{h.title}</span>
-          </a>
+          </div>
         ))}
       </div>
     </div>
@@ -125,110 +112,81 @@ function FunFacts({ facts }: { facts: IndustryFact[] }) {
   );
 }
 
-/* ---- Quotes + Poll ---- */
+/* ---- Poll sequence ---- */
 
-type Phase = 'quotes' | 'poll';
+// How long poll results stay on screen before advancing to the next question.
+const RESULTS_LINGER_MS = 6000;
+// If the user doesn't answer, auto-advance after this many ms.
+const UNANSWERED_TIMEOUT_MS = 45000;
 
-function QuotesAndPoll({
-  quotes,
-  polls,
-  industry,
-}: {
-  quotes: IndustryQuote[];
-  polls: IndustryPoll[];
-  industry: string | null;
-}) {
-  const [phase, setPhase] = useState<Phase>('quotes');
-  const [quoteIndex, setQuoteIndex] = useState(0);
-  const [quotesShown, setQuotesShown] = useState(0);
-  const [pollIndex, setPollIndex] = useState(0);
-
-  // Rotate quotes every QUOTE_ROTATION_MS; after QUOTES_BEFORE_POLL rotations, switch to poll
-  useEffect(() => {
-    if (phase !== 'quotes' || quotes.length === 0) return;
-    const interval = setInterval(() => {
-      setQuotesShown((n) => {
-        const next = n + 1;
-        if (next >= QUOTES_BEFORE_POLL) {
-          setPhase('poll');
-          return next;
-        }
-        return next;
-      });
-      setQuoteIndex((i) => (i + 1) % quotes.length);
-    }, QUOTE_ROTATION_MS);
-    return () => clearInterval(interval);
-  }, [phase, quotes.length]);
-
-  // After the poll is answered (or dismissed), advance to the next poll for the
-  // next rotation and return to quotes for now.
-  const returnToQuotes = () => {
-    setPhase('quotes');
-    setQuotesShown(0);
-    setQuoteIndex((i) => (i + 1) % Math.max(quotes.length, 1));
-    setPollIndex((i) => (polls.length > 0 ? (i + 1) % polls.length : 0));
-  };
-
-  if (phase === 'poll' && polls.length > 0) {
-    return <PollCard poll={polls[pollIndex % polls.length]} industry={industry} onDone={returnToQuotes} />;
-  }
-
-  const current = quotes[quoteIndex];
-  if (!current) return null;
-
-  return (
-    <div className="min-h-[180px] flex items-center justify-center px-4">
-      <div
-        key={quoteIndex}
-        className="text-center"
-        style={{ animation: `quoteFade ${QUOTE_ROTATION_MS}ms ease-in-out forwards` }}
-      >
-        <p className="text-lg sm:text-xl text-white/90 leading-relaxed font-medium italic max-w-md mx-auto">
-          &ldquo;{current.text}&rdquo;
-        </p>
-        {current.attribution && (
-          <p className="text-[10px] font-mono tracking-widest uppercase text-white/30 mt-4">
-            &mdash; {current.attribution}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ---- Poll ---- */
-
-function PollCard({
-  poll,
-  industry,
-  onDone,
-}: {
-  poll: IndustryPoll;
-  industry: string | null;
-  onDone: () => void;
-}) {
+function PollSequence({ polls, industry }: { polls: IndustryPoll[]; industry: string | null }) {
+  const [index, setIndex] = useState(0);
   const [answered, setAnswered] = useState<string | null>(null);
+  const done = index >= polls.length;
+
+  // Auto-advance if the user never answers this poll
+  useEffect(() => {
+    if (done || answered) return;
+    const t = setTimeout(() => setIndex((i) => i + 1), UNANSWERED_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [index, answered, done]);
+
+  const poll = polls[index];
 
   const handleSelect = (option: PollOption) => {
+    if (answered) return;
     setAnswered(option.id);
     trackEvent('loading_poll', '/analyzing', {
       answer: option.id,
       answer_label: option.label,
       industry,
-      question: poll.question,
+      question: poll?.question,
     });
-    // Return to quotes after a few seconds so users can see the results
-    setTimeout(() => onDone(), 5000);
+    // Show the results briefly, then move to the next question.
+    setTimeout(() => {
+      setAnswered(null);
+      setIndex((i) => i + 1);
+    }, RESULTS_LINGER_MS);
   };
+
+  if (done) {
+    return (
+      <div className="border border-white/10 bg-white/5 rounded-lg p-6 text-center">
+        <p className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan mb-2">
+          Thanks for playing along
+        </p>
+        <p className="text-sm text-white/70">
+          Your report is almost ready. Hang tight.
+        </p>
+      </div>
+    );
+  }
+
+  if (!poll) return null;
 
   return (
     <div
-      className="border border-white/10 bg-white/5 rounded-lg p-6 min-h-[180px]"
+      key={index}
+      className="border border-white/10 bg-white/5 rounded-lg p-6 min-h-[200px]"
       style={{ animation: 'fadeInUp 0.5s ease-out' }}
     >
-      <p className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan mb-2">
-        Quick question while you wait&hellip;
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[10px] font-mono tracking-widest uppercase text-beacon-cyan">
+          Quick question &mdash; {index + 1} of {polls.length}
+        </p>
+        {polls.length > 1 && (
+          <div className="flex items-center gap-1">
+            {polls.map((_, i) => (
+              <span
+                key={i}
+                className={`block h-1 w-4 rounded-full ${
+                  i < index ? 'bg-beacon-cyan/60' : i === index ? 'bg-beacon-cyan' : 'bg-white/10'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
       <h3 className="text-base sm:text-lg font-bold text-white mb-5 leading-tight">
         {poll.question}
       </h3>
