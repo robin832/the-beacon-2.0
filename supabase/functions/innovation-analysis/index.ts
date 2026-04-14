@@ -291,7 +291,10 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
           "x-api-key": anthropicKey,
           "anthropic-version": "2023-06-01",
         },
-        signal: AbortSignal.timeout(130_000),
+        // Background task runs outside the 150s HTTP ceiling, so we can allow
+        // a much longer Claude call. Keep it under the ~400s Supabase edge
+        // wall-clock budget so URL verification and DB writes still have room.
+        signal: AbortSignal.timeout(240_000),
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 8000,
@@ -659,11 +662,17 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
         });
     } catch { /* logging failure is non-critical */ }
     } catch (bgErr) {
-      // Background task failed somewhere — make sure the row is flagged so the
-      // /analyzing page stops polling and shows the error screen.
-      console.error("Background analysis task failed:", (bgErr as { message?: string })?.message || bgErr);
+      // Background task failed somewhere. Capture the error message into a
+      // text column we can read back from SQL (data_confidence_explanation is
+      // unused on error rows), since edge function console.error output isn't
+      // exposed by the MCP get_logs tool.
+      const errMsg = String((bgErr as { stack?: string; message?: string })?.stack || (bgErr as { message?: string })?.message || bgErr).slice(0, 1500);
+      console.error("Background analysis task failed:", errMsg);
       try {
-        await supabase.from("analyses").update({ analysis_status: "error" }).eq("id", analysis_id);
+        await supabase.from("analyses").update({
+          analysis_status: "error",
+          data_confidence_explanation: `bg-task error: ${errMsg}`,
+        }).eq("id", analysis_id);
       } catch { /* best effort */ }
     }
     };
