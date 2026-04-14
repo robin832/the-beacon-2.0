@@ -122,6 +122,14 @@ Bad: "A company in the logistics sector."
 
 ---
 
+## Relevant Beacon Use Case Themes (when provided)
+
+The user message may include a `### Relevant Beacon Use Case Themes` block listing real Beacon use case patterns that match the prospect's industry. When present:
+- Prefer matches whose `why_this_match` can be framed in terms of one of these named themes.
+- You may reference a theme by title in `why_this_match` or `member_expertise` when the member's work maps clearly to it — this makes rationales feel grounded in the Beacon ecosystem rather than generic.
+
+---
+
 ## Handling Sparse Member Data
 
 Many Beacon members have limited data in the database. When data is sparse:

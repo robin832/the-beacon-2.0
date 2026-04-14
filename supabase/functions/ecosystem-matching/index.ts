@@ -10,6 +10,7 @@ const corsHeaders = {
 // Load prompt from shared module — edit _shared/prompts/ecosystem-matching.md then regenerate
 import { ECOSYSTEM_MATCHING_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-ecosystem-matching.ts";
 import { verifyUrl } from "../_shared/url-verify.ts";
+import { getUseCasesForVerticals, formatUseCasesForPrompt } from "../_shared/beacon-context.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -138,6 +139,15 @@ Deno.serve(async (req) => {
   Collaboration Interests: ${((member.collaboration_interests as string[]) || []).join(", ") || "None listed"}`;
     }).join("\n\n");
 
+    // Pull the real Beacon use case themes for this prospect's verticals so
+    // Claude can ground match rationales in named Beacon themes instead of
+    // generic language.
+    const verticalsForContext = (analysis.confirmed_verticals as string[] | null)
+      || (analysis.industry ? [analysis.industry as string] : []);
+    const useCaseRows = await getUseCasesForVerticals(publicClient, verticalsForContext, 5);
+    const useCaseBlock = formatUseCasesForPrompt(useCaseRows);
+    const beaconContextBlock = useCaseBlock ? `\n${useCaseBlock}` : "";
+
     const userMessage = `### Prospect Company (from the innovation analysis)
 
 **Company:** ${analysis.company_name}
@@ -152,6 +162,7 @@ Deno.serve(async (req) => {
 ### Pre-Selected Member Companies
 
 ${memberDataFormatted}
+${beaconContextBlock}
 
 ## Research Instructions for Top Members
 

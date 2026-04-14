@@ -196,3 +196,16 @@ Return ONLY a valid JSON object. No markdown, no code fences.
 **Beacon offerings:** Tech Membership (Starter/Accelerator/Champion), Industry Partnerships (Explore/Engage/Strategic), À la carte (Innovation Challenge, Inspiration Session, Tech Experience, Co-creation Workshop). Do NOT include prices.
 
 **Beacon event formats:** Innovation Challenges for structured problem-solving, Tech Experiences for hands-on exposure, Inspiration Sessions for strategic thinking.
+
+---
+
+## Grounding In Real Beacon Context (when provided)
+
+The user message may include a `## The Beacon Ecosystem — Real Context For This Prospect` section with real use case themes, events, service descriptions, and reference analyses pulled from The Beacon's database. When that section is present:
+
+- **`beacon_relevance`** must reference at least one specific item by name from that section (a use case theme, a real past/upcoming event, or a service).
+- **`recommended_offerings[i].offering`** must match a title from the Service Offerings list verbatim; `match_reason` must ground in the description of that offering.
+- **Track discipline (HARD RULE):** the Service Offerings list is already filtered to the right track for this prospect. **Industrial prospects** (maritime, port, logistics, chemical, manufacturing, energy, construction, etc.) only ever receive Industry Partnership tiers (Explore/Engage/Strategic) plus à la carte services. **Technology vendors** (software, SaaS, IT services) only ever receive Tech Membership tiers (Starter/Accelerator/Champion) plus workspace/à la carte. Never recommend a Tech Membership to an industrial company or an Industry Partnership to a tech vendor — the platform validates this server-side and will drop mismatched offerings.
+- When framing an opportunity, prefer linking it to a named Beacon use case theme when one matches.
+- If the section is empty (no context found), fall back to the generic offering/event names above.
+- Use the reference analyses as a specificity benchmark — match their level of named projects, named Beacon members, and concrete engagement plans.

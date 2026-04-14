@@ -11,6 +11,17 @@ const corsHeaders = {
 import { INNOVATION_ANALYSIS_PROMPT as SYSTEM_PROMPT } from "../_shared/prompt-innovation-analysis.ts";
 import { getCuratedSources } from "../_shared/curated-sources.ts";
 import { verifySourceUrls, verifyUrl, isDeepLink } from "../_shared/url-verify.ts";
+import {
+  getUseCasesForVerticals,
+  getEventsForVerticals,
+  getServiceDescriptions,
+  getReferenceAnalyses,
+  inferTrack,
+  formatUseCasesForPrompt,
+  formatEventsForPrompt,
+  formatServicesForPrompt,
+  formatReferenceAnalysesForPrompt,
+} from "../_shared/beacon-context.ts";
 
 // Sonnet 4 pricing (USD per token). Update if Anthropic adjusts.
 const SONNET_4_PRICING = {
@@ -210,6 +221,30 @@ Instructions for handling the feedback:
 `
       : "";
 
+    // Fetch real Beacon ecosystem context from the knowledge_base + events
+    // tables so Claude can ground `beacon_relevance`, `recommended_offerings`,
+    // and opportunity framing in actual Beacon content instead of generic
+    // language. All helpers fail soft — return empty strings on error.
+    const verticalsForContext = (confirmed_verticals && confirmed_verticals.length > 0)
+      ? confirmed_verticals
+      : (industry ? [industry] : []);
+    const track = inferTrack(industry, confirmed_verticals);
+    const [useCaseRows, eventRows, serviceRows, referenceRows] = await Promise.all([
+      getUseCasesForVerticals(publicClient, verticalsForContext, 5),
+      getEventsForVerticals(publicClient, verticalsForContext, 5),
+      getServiceDescriptions(publicClient, track),
+      getReferenceAnalyses(publicClient),
+    ]);
+    const beaconContextSection = [
+      formatUseCasesForPrompt(useCaseRows),
+      formatEventsForPrompt(eventRows),
+      formatServicesForPrompt(serviceRows),
+      formatReferenceAnalysesForPrompt(referenceRows),
+    ].filter(Boolean).join("\n");
+    const beaconContextBlock = beaconContextSection
+      ? `\n\n## The Beacon Ecosystem — Real Context For This Prospect\n\n${beaconContextSection}`
+      : "";
+
     const userMessage = `## Context
 
 **Company:** ${company_name}
@@ -222,7 +257,7 @@ Instructions for handling the feedback:
 Prioritize these curated and learned sources when researching. They have been verified to produce accurate, relevant insights for ${industry || "this"} companies. Use them as your first-pass search targets before going broader:
 
 ${sourcesList}
-${priorSection}${sourceQualitySection}${feedbackSection}
+${beaconContextBlock}${priorSection}${sourceQualitySection}${feedbackSection}
 ---
 
 Perform a complete innovation opportunity analysis for ${company_name}. Today's date is ${currentDate}. Follow all phases of the research protocol, score all dimensions with sub-indicators, and produce the full JSON output.`;
@@ -399,6 +434,27 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       }
     } catch (verifyErr) {
       console.error("Real-world example URL verification failed (non-critical):", verifyErr);
+    }
+
+    // Track-based offering validation. The prompt instructs Claude to only
+    // recommend offerings from the filtered serviceRows (which match the
+    // inferred track), but we enforce it server-side too: industrial prospects
+    // must only see Industry Partnership tiers + à la carte; tech vendors must
+    // only see Tech Membership tiers + à la carte. When track is 'both' we
+    // skip the filter (unknown industry — let everything through).
+    if (track !== "both" && Array.isArray(analysisData.recommended_offerings) && serviceRows.length > 0) {
+      const allowedTitlesLower = serviceRows.map((r) => r.title.toLowerCase());
+      const isAllowed = (offering: string | null | undefined): boolean => {
+        if (!offering) return false;
+        const o = offering.toLowerCase();
+        return allowedTitlesLower.some((t) => o.includes(t) || t.includes(o));
+      };
+      const before = analysisData.recommended_offerings.length;
+      analysisData.recommended_offerings = (analysisData.recommended_offerings as Array<{ offering?: string }>).filter((r) => isAllowed(r.offering));
+      const dropped = before - analysisData.recommended_offerings.length;
+      if (dropped > 0) {
+        console.warn(`[innovation-analysis] Dropped ${dropped} off-track offerings (track=${track})`);
+      }
     }
 
     // Build industry_context from industry_landscape for backwards compat

@@ -40,7 +40,7 @@ export default function IndustryBriefing({ industry }: IndustryBriefingProps) {
       <FunFacts facts={content.facts} />
 
       {/* Alternating witty quotes + interactive poll */}
-      <QuotesAndPoll quotes={content.quotes} poll={content.poll} industry={industry} />
+      <QuotesAndPoll quotes={content.quotes} polls={content.polls} industry={industry} />
 
       {/* Footer hint */}
       <p className="text-[10px] font-mono tracking-widest uppercase text-white/20 text-center pt-2">
@@ -126,16 +126,17 @@ type Phase = 'quotes' | 'poll';
 
 function QuotesAndPoll({
   quotes,
-  poll,
+  polls,
   industry,
 }: {
   quotes: IndustryQuote[];
-  poll: IndustryPoll;
+  polls: IndustryPoll[];
   industry: string | null;
 }) {
   const [phase, setPhase] = useState<Phase>('quotes');
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [quotesShown, setQuotesShown] = useState(0);
+  const [pollIndex, setPollIndex] = useState(0);
 
   // Rotate quotes every QUOTE_ROTATION_MS; after QUOTES_BEFORE_POLL rotations, switch to poll
   useEffect(() => {
@@ -154,15 +155,17 @@ function QuotesAndPoll({
     return () => clearInterval(interval);
   }, [phase, quotes.length]);
 
-  // After the poll is answered (or dismissed), return to quotes after a pause
+  // After the poll is answered (or dismissed), advance to the next poll for the
+  // next rotation and return to quotes for now.
   const returnToQuotes = () => {
     setPhase('quotes');
     setQuotesShown(0);
     setQuoteIndex((i) => (i + 1) % Math.max(quotes.length, 1));
+    setPollIndex((i) => (polls.length > 0 ? (i + 1) % polls.length : 0));
   };
 
-  if (phase === 'poll') {
-    return <PollCard poll={poll} industry={industry} onDone={returnToQuotes} />;
+  if (phase === 'poll' && polls.length > 0) {
+    return <PollCard poll={polls[pollIndex % polls.length]} industry={industry} onDone={returnToQuotes} />;
   }
 
   const current = quotes[quoteIndex];

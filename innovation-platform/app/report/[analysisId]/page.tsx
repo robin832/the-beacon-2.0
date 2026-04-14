@@ -141,6 +141,16 @@ export default function ReportPage() {
         explanation={analysis.data_confidence_explanation}
       />
 
+      {/* AI disclaimer — subtle bar at top, scrolls away with content */}
+      <div className="bg-beacon-light-gray border-b border-beacon-border px-6 py-2">
+        <div className="max-w-6xl mx-auto flex items-center gap-2 text-[10px] font-mono tracking-wide text-beacon-medium-gray">
+          <span aria-hidden className="text-beacon-cyan">&#x26A1;</span>
+          <span>
+            This report is AI-generated from publicly available data. Some details may be limited by sites that restrict automated access.
+          </span>
+        </div>
+      </div>
+
       {/* Section 1: Hero */}
       <div id="hero">
         <ReportHero analysis={analysis} />
