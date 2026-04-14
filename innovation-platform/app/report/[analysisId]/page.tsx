@@ -12,7 +12,6 @@ import DimensionExplorer from '@/components/report/DimensionExplorer';
 import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
 import TechTag from '@/components/ui/TechTag';
-import QuickWin from '@/components/report/QuickWin';
 import { RichText } from '@/components/ui/SourceLink';
 import RatingAndCTA from '@/components/report/RatingAndCTA';
 import SourcesWidget from '@/components/report/SourcesWidget';
@@ -95,7 +94,7 @@ export default function ReportPage() {
   // Sticky nav scroll tracking
   useEffect(() => {
     if (!analysis) return;
-    const sectionIds = ['hero', 'standout', 'industry', 'dimensions', 'opportunities', 'technologies', 'sources', 'cta'];
+    const sectionIds = ['hero', 'standout', 'industry', 'dimensions', 'opportunities', 'sources', 'cta'];
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -141,14 +140,11 @@ export default function ReportPage() {
         explanation={analysis.data_confidence_explanation}
       />
 
-      {/* AI disclaimer — subtle bar at top, scrolls away with content */}
-      <div className="bg-beacon-light-gray border-b border-beacon-border px-6 py-2">
-        <div className="max-w-6xl mx-auto flex items-center gap-2 text-[10px] font-mono tracking-wide text-beacon-medium-gray">
-          <span aria-hidden className="text-beacon-cyan">&#x26A1;</span>
-          <span>
-            This report is AI-generated from publicly available data. Some details may be limited by sites that restrict automated access.
-          </span>
-        </div>
+      {/* AI disclaimer — sticky orange bar, stays visible while scrolling */}
+      <div className="sticky top-0 z-[60] bg-beacon-orange text-white px-6 py-2 text-center">
+        <p className="text-[11px] font-mono tracking-wide">
+          This report is AI-generated from publicly available data. Some details may be limited by sites that restrict automated access.
+        </p>
       </div>
 
       {/* Section 1: Hero */}
@@ -270,6 +266,50 @@ export default function ReportPage() {
             {dimensions.length > 0 && (
               <DimensionExplorer dimensions={dimensions} sources={sources} />
             )}
+
+            {/* Technology profile — nested under Dimensions */}
+            {technologies.length > 0 && (
+              <div className="mt-16">
+                <h3 className="text-2xl font-black tracking-tight text-beacon-dark-teal mb-3">
+                  Detected Technologies
+                </h3>
+                <p className="text-beacon-medium-gray mb-8 max-w-2xl">
+                  Technologies we detected in {analysis.company_name}&apos;s public footprint, and how they connect to The Beacon ecosystem.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {technologies.map((tech, i) => (
+                    <Card key={i} className="p-5" hover>
+                      <h4 className="font-bold text-beacon-dark-teal mb-2">{tech.technology}</h4>
+                      {tech.context && (
+                        <p className="text-xs text-beacon-dark-teal/60 mb-2">{tech.context}</p>
+                      )}
+                      <div className="flex items-center gap-2 mb-2">
+                        {tech.maturity && (
+                          <span className={`text-[9px] font-mono tracking-widest uppercase px-2 py-0.5 rounded ${
+                            tech.maturity === 'in_production' ? 'bg-green-50 text-green-700' :
+                            tech.maturity === 'in_pilot' ? 'bg-blue-50 text-blue-700' :
+                            tech.maturity === 'planned' ? 'bg-yellow-50 text-yellow-700' :
+                            'bg-gray-50 text-gray-500'
+                          }`}>
+                            {tech.maturity.replace(/_/g, ' ')}
+                          </span>
+                        )}
+                        {tech.source && (
+                          <span className="text-[9px] font-mono text-beacon-medium-gray">
+                            <RichText text={`[${tech.source}]`} sources={sources} />
+                          </span>
+                        )}
+                      </div>
+                      {tech.beacon_bridge && (
+                        <p className="text-xs text-beacon-cyan mt-2 pt-2 border-t border-beacon-border">
+                          {tech.beacon_bridge}
+                        </p>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </FadeInSection>
       </section>
@@ -290,9 +330,6 @@ export default function ReportPage() {
                 <OpportunityCard key={i} opportunity={opp} sources={sources} />
               ))}
             </div>
-
-            {/* Quick Win */}
-            <QuickWin quickWin={analysis.quick_win} />
 
             {/* Recommended Beacon offerings */}
             {analysis.recommended_offerings && analysis.recommended_offerings.length > 0 && (
@@ -347,55 +384,6 @@ export default function ReportPage() {
         </FadeInSection>
       </section>
 
-      {/* Section 6: Detected Technologies */}
-      {technologies.length > 0 && (
-        <section id="technologies" className="bg-white py-20 px-6">
-          <FadeInSection>
-            <div className="max-w-6xl mx-auto">
-              <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-beacon-dark-teal mb-4">
-                Your Technology Profile
-              </h2>
-              <p className="text-beacon-medium-gray mb-10 max-w-2xl">
-                Technologies we detected in {analysis.company_name}&apos;s public footprint, and how they connect to The Beacon ecosystem.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {technologies.map((tech, i) => (
-                  <Card key={i} className="p-5" hover>
-                    <h4 className="font-bold text-beacon-dark-teal mb-2">{tech.technology}</h4>
-                    {tech.context && (
-                      <p className="text-xs text-beacon-dark-teal/60 mb-2">{tech.context}</p>
-                    )}
-                    <div className="flex items-center gap-2 mb-2">
-                      {tech.maturity && (
-                        <span className={`text-[9px] font-mono tracking-widest uppercase px-2 py-0.5 rounded ${
-                          tech.maturity === 'in_production' ? 'bg-green-50 text-green-700' :
-                          tech.maturity === 'in_pilot' ? 'bg-blue-50 text-blue-700' :
-                          tech.maturity === 'planned' ? 'bg-yellow-50 text-yellow-700' :
-                          'bg-gray-50 text-gray-500'
-                        }`}>
-                          {tech.maturity.replace(/_/g, ' ')}
-                        </span>
-                      )}
-                      {tech.source && (
-                        <span className="text-[9px] font-mono text-beacon-medium-gray">
-                          <RichText text={`[${tech.source}]`} sources={sources} />
-                        </span>
-                      )}
-                    </div>
-                    {tech.beacon_bridge && (
-                      <p className="text-xs text-beacon-cyan mt-2 pt-2 border-t border-beacon-border">
-                        {tech.beacon_bridge}
-                      </p>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </FadeInSection>
-        </section>
-      )}
-
       {/* Section 7: Sources & Methodology */}
       <section id="sources" className="bg-beacon-light-gray py-16 px-6">
         <SourcesSection sources={sources} confidence={analysis.data_confidence} explanation={analysis.data_confidence_explanation} researchData={researchData} />
@@ -429,12 +417,11 @@ function StickyNav({ activeSection }: { activeSection: string }) {
     { id: 'industry', label: 'Industry' },
     { id: 'dimensions', label: 'Dimensions' },
     { id: 'opportunities', label: 'Opportunities' },
-    { id: 'technologies', label: 'Technologies' },
     { id: 'sources', label: 'Sources' },
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-beacon-border shadow-sm" style={{ animation: 'fadeInUp 0.3s ease-out' }}>
+    <nav className="fixed top-[34px] left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-beacon-border shadow-sm" style={{ animation: 'fadeInUp 0.3s ease-out' }}>
       <div className="max-w-6xl mx-auto px-6 flex items-center gap-1 h-12 overflow-x-auto">
         {sections.map((s) => (
           <a
