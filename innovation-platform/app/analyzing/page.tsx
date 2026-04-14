@@ -46,8 +46,10 @@ export default function AnalyzingPage() {
     // Poll every 4 seconds
     const interval = setInterval(checkStatus, 4000);
 
-    // Timeout after 3 minutes
-    const timeout = setTimeout(() => setError(true), 180000);
+    // Timeout after 4.5 minutes. The edge function now runs the analysis as a
+    // background task (see innovation-analysis/index.ts), which removes the
+    // 150s HTTP ceiling — some deep analyses now finish around 3 minutes.
+    const timeout = setTimeout(() => setError(true), 270000);
 
     return () => {
       clearInterval(interval);

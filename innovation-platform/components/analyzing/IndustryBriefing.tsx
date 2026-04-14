@@ -33,6 +33,11 @@ export default function IndustryBriefing({ industry }: IndustryBriefingProps) {
         )}
       </div>
 
+      {/* ETA hint — shown once at the start, no ticking counter */}
+      <p className="text-[10px] font-mono tracking-wide text-white/40">
+        Usually takes 60&ndash;90 seconds. Deep analyses can run up to 3 minutes.
+      </p>
+
       {/* Scrolling news ticker */}
       <NewsTicker headlines={content.headlines} />
 

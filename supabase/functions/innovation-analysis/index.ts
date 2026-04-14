@@ -262,6 +262,15 @@ ${beaconContextBlock}${priorSection}${sourceQualitySection}${feedbackSection}
 
 Perform a complete innovation opportunity analysis for ${company_name}. Today's date is ${currentDate}. Follow all phases of the research protocol, score all dimensions with sub-indicators, and produce the full JSON output.`;
 
+    // From here on the work is heavy (Claude call + URL verification + DB
+    // writes). We dispatch it as a background task and return the HTTP
+    // response immediately. The /analyzing page polls
+    // analyses.analysis_status and only navigates on 'complete', so
+    // decoupling the response from Claude's wall-clock means a slow run no
+    // longer turns into a visible request timeout. Errors inside the bg task
+    // mark analysis_status = 'error' so the UI still surfaces failures.
+    const runAnalysisInBackground = async () => {
+    try {
     // Update status: analyzing
     await supabase
       .from("analyses")
@@ -323,10 +332,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
     if (result.error || result.type === "error") {
       console.error("Claude API error:", JSON.stringify(result));
       await supabase.from("analyses").update({ analysis_status: "error" }).eq("id", analysis_id);
-      return new Response(
-        JSON.stringify({ error: "Claude API error", detail: result.error?.message || result.message || JSON.stringify(result) }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return;
     }
 
     let outputText = "";
@@ -380,10 +386,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
         .from("analyses")
         .update({ analysis_status: "error" })
         .eq("id", analysis_id);
-      return new Response(
-        JSON.stringify({ error: "Failed to parse analysis" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return;
     }
 
     // Update status: matching
@@ -655,9 +658,28 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
           },
         });
     } catch { /* logging failure is non-critical */ }
+    } catch (bgErr) {
+      // Background task failed somewhere — make sure the row is flagged so the
+      // /analyzing page stops polling and shows the error screen.
+      console.error("Background analysis task failed:", (bgErr as { message?: string })?.message || bgErr);
+      try {
+        await supabase.from("analyses").update({ analysis_status: "error" }).eq("id", analysis_id);
+      } catch { /* best effort */ }
+    }
+    };
+
+    // Register the background task so the Deno edge runtime keeps it alive
+    // past the HTTP response. Fall back to bare invocation in environments
+    // (local/test) that don't expose EdgeRuntime.waitUntil.
+    // deno-lint-ignore no-explicit-any
+    const edgeRuntimeOuter = (globalThis as any).EdgeRuntime;
+    const bgPromise = runAnalysisInBackground();
+    if (edgeRuntimeOuter?.waitUntil) {
+      edgeRuntimeOuter.waitUntil(bgPromise);
+    }
 
     return new Response(
-      JSON.stringify({ success: true, analysis_id }),
+      JSON.stringify({ success: true, analysis_id, status: "started" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
