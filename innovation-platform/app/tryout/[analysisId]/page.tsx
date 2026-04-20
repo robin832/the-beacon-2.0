@@ -39,17 +39,36 @@ export default function TryoutPage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 18; // ~90s at 5s intervals
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
     async function load() {
+      if (cancelled) return;
+      attempts += 1;
       const [analysisRes, matchesRes] = await Promise.all([
         supabase.from('analyses').select('*').eq('id', analysisId).single(),
         supabase.from('ecosystem_matches').select('*').eq('analysis_id', analysisId).order('match_rank', { ascending: true }),
       ]);
+      if (cancelled) return;
       if (analysisRes.data) setAnalysis(analysisRes.data as Analysis);
       if (matchesRes.data) setMatches(matchesRes.data as EcosystemMatch[]);
       setLoading(false);
+      // Ecosystem matching runs as a background task after the analysis
+      // completes — if the user lands here quickly, matches may not be in the
+      // DB yet. Poll for up to ~90s so the page fills itself in.
+      if (!cancelled && (!matchesRes.data || matchesRes.data.length === 0) && attempts < MAX_ATTEMPTS) {
+        pollTimer = setTimeout(load, 5000);
+      }
     }
+
     load();
     trackEvent('page_view', '/tryout', { analysis_id: analysisId });
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
   }, [analysisId]);
 
   // Keyboard navigation for lightbox
@@ -119,14 +138,29 @@ export default function TryoutPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {visibleMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} locked={false} analysisId={analysisId} />
-                ))}
-                {lockedMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} locked={true} analysisId={analysisId} />
-                ))}
-              </div>
+              {matches.length === 0 ? (
+                <Card className="p-8 text-center border-dashed">
+                  <div className="inline-flex items-center gap-2 text-beacon-medium-gray">
+                    <svg className="animate-spin w-4 h-4 text-beacon-cyan" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <span className="text-sm">Matching you with Beacon members&hellip;</span>
+                  </div>
+                  <p className="text-xs text-beacon-medium-gray mt-2">
+                    This usually takes about a minute after your report is ready.
+                  </p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {visibleMatches.map((match) => (
+                    <MatchCard key={match.id} match={match} locked={false} analysisId={analysisId} />
+                  ))}
+                  {lockedMatches.map((match) => (
+                    <MatchCard key={match.id} match={match} locked={true} analysisId={analysisId} />
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Tryout 2: Day at The Beacon */}

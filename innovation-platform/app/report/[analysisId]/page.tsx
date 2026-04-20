@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { trackEvent, setupScrollTracking, trackTimeOnPage } from '@/lib/tracking';
-import { Analysis, MaturityDimension, InnovationOpportunity, TechnologyDetected, AnalysisSource } from '@/lib/types';
+import { Analysis, MaturityDimension, InnovationOpportunity, TechnologyDetected, AnalysisSource, EcosystemMatch } from '@/lib/types';
 import PageTransition from '@/components/ui/PageTransition';
 import ReportHero from '@/components/report/ReportHero';
 import SurprisingInsight from '@/components/report/SurprisingInsight';
@@ -14,6 +14,7 @@ import Card from '@/components/ui/Card';
 import TechTag from '@/components/ui/TechTag';
 import { RichText } from '@/components/ui/SourceLink';
 import RatingAndCTA from '@/components/report/RatingAndCTA';
+import EcosystemMatches from '@/components/report/EcosystemMatches';
 import SourcesWidget from '@/components/report/SourcesWidget';
 import Footer from '@/components/layout/Footer';
 
@@ -50,20 +51,25 @@ export default function ReportPage() {
 
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [dimensions, setDimensions] = useState<MaturityDimension[]>([]);
+  const [matches, setMatches] = useState<EcosystemMatch[]>([]);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
-      const [analysisRes, dimensionsRes, productsRes, plansRes] = await Promise.all([
+      const [analysisRes, dimensionsRes, matchesRes, productsRes, plansRes] = await Promise.all([
         supabase.from('analyses').select('*').eq('id', analysisId).single(),
         supabase.from('maturity_dimensions').select('*').eq('analysis_id', analysisId).order('weight', { ascending: false }),
+        supabase.from('ecosystem_matches').select('*').eq('analysis_id', analysisId).order('match_rank', { ascending: true }),
         supabase.schema('public').from('products').select('name, description, category').eq('is_active', true),
         supabase.schema('public').from('membership_plans').select('name, description, target_audience, benefits').eq('is_active', true).order('display_order', { ascending: true }),
       ]);
+      if (cancelled) return;
       if (analysisRes.data) setAnalysis(analysisRes.data as Analysis);
       if (dimensionsRes.data) setDimensions(dimensionsRes.data as MaturityDimension[]);
+      if (matchesRes.data) setMatches(matchesRes.data as EcosystemMatch[]);
       const products: CatalogEntry[] = (productsRes.data || []).map((p) => ({
         kind: 'product',
         name: p.name,
@@ -82,6 +88,24 @@ export default function ReportPage() {
       setLoading(false);
     }
     load();
+    // Poll for ecosystem matches every 5s (up to ~90s) since matching runs as
+    // a background task after the analysis completes.
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      if (cancelled || attempts >= 18) { clearInterval(interval); return; }
+      attempts += 1;
+      const { data } = await supabase
+        .from('ecosystem_matches')
+        .select('*')
+        .eq('analysis_id', analysisId)
+        .order('match_rank', { ascending: true });
+      if (cancelled) return;
+      if (data && data.length > 0) {
+        setMatches(data as EcosystemMatch[]);
+        clearInterval(interval);
+      }
+    }, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [analysisId]);
 
   useEffect(() => {
@@ -94,7 +118,7 @@ export default function ReportPage() {
   // Sticky nav scroll tracking
   useEffect(() => {
     if (!analysis) return;
-    const sectionIds = ['hero', 'standout', 'industry', 'dimensions', 'opportunities', 'sources', 'cta'];
+    const sectionIds = ['hero', 'standout', 'industry', 'dimensions', 'opportunities', 'matches', 'sources', 'cta'];
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -384,6 +408,13 @@ export default function ReportPage() {
         </FadeInSection>
       </section>
 
+      {/* Section 6: Ecosystem Matches */}
+      {matches.length > 0 && (
+        <div id="matches">
+          <EcosystemMatches matches={matches} />
+        </div>
+      )}
+
       {/* Section 7: Sources & Methodology */}
       <section id="sources" className="bg-beacon-light-gray py-16 px-6">
         <SourcesSection sources={sources} confidence={analysis.data_confidence} explanation={analysis.data_confidence_explanation} researchData={researchData} />
@@ -417,6 +448,7 @@ function StickyNav({ activeSection }: { activeSection: string }) {
     { id: 'industry', label: 'Industry' },
     { id: 'dimensions', label: 'Dimensions' },
     { id: 'opportunities', label: 'Opportunities' },
+    { id: 'matches', label: 'Matches' },
     { id: 'sources', label: 'Sources' },
   ];
 
