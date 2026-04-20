@@ -271,11 +271,24 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
     // mark analysis_status = 'error' so the UI still surfaces failures.
     const runAnalysisInBackground = async () => {
     try {
+    // Breadcrumb helper: writes a debug string into data_confidence_explanation
+    // at each major step. If the bg task hangs or is killed, the last
+    // breadcrumb tells us where. Success overwrites it with the real
+    // confidence explanation from Claude.
+    const breadcrumb = async (label: string) => {
+      try {
+        await supabase.from("analyses").update({
+          data_confidence_explanation: `[debug] ${label} @ ${new Date().toISOString()}`,
+        }).eq("id", analysis_id);
+      } catch { /* best effort */ }
+    };
+
     // Update status: analyzing
     await supabase
       .from("analyses")
       .update({ analysis_status: "analyzing" })
       .eq("id", analysis_id);
+    await breadcrumb("before-anthropic");
 
     // Anthropic call with one retry on transient overload. Innovation analysis
     // is long (80-120s) so we can only afford a single retry with a short
@@ -296,17 +309,19 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
         // wall-clock budget so URL verification and DB writes still have room.
         signal: AbortSignal.timeout(240_000),
         body: JSON.stringify({
-          model: "claude-sonnet-4-5-20250929",
+          model: "claude-sonnet-4-20250514",
           max_tokens: 8000,
           system: SYSTEM_PROMPT,
           tools: [
             {
               type: "web_search_20250305",
               name: "web_search",
-              // 8 searches keeps total wall-clock comfortably under the 150s
-              // edge-function ceiling. Bumping to 10 (commit 2ba7036) caused
-              // intermittent 546 timeouts — see Group-GTS run on 2026-04-13.
-              max_uses: 8,
+              // 6 searches is the sweet spot on Sonnet 4 — enough for company
+              // research + 3 real-world examples, but keeps wall-clock well
+              // inside the Supabase edge-function budget (including bg-task).
+              // 8 searches caused silent hangs for complex prospects where
+              // total work exceeded the runtime limit without our catch firing.
+              max_uses: 6,
             },
           ],
           messages: [
@@ -330,6 +345,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       await new Promise((res) => setTimeout(res, 2500));
       ({ r: response, body: result } = await callAnthropic());
     }
+    await breadcrumb(`anthropic-returned status=${response.status} stop_reason=${result.stop_reason || 'n/a'}`);
 
     // Log Claude API response status for debugging
     if (result.error || result.type === "error") {
@@ -397,6 +413,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       .from("analyses")
       .update({ analysis_status: "matching" })
       .eq("id", analysis_id);
+    await breadcrumb(`parsed outputLen=${outputText.length} searches=${webSearchCount}`);
 
     // Verify source URLs with a HEAD fetch so the frontend never renders broken
     // links. Each source gets a `verified: boolean` field. Runs in parallel
@@ -646,7 +663,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
         .from("ai_logs")
         .insert({
           feature: "innovation_analysis",
-          model: "claude-sonnet-4-5-20250929",
+          model: "claude-sonnet-4-20250514",
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           latency_ms: latencyMs,

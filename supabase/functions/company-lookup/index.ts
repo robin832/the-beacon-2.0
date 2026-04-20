@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           // 4096 tokens leaves headroom for the reasoning + multi-candidate JSON.
-          model: "claude-sonnet-4-5-20250929",
+          model: "claude-sonnet-4-20250514",
           max_tokens: 4096,
           system: SYSTEM_PROMPT,
           tools: [
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
         const debugClient = createClient(supabaseUrl, supabaseServiceKey);
         await debugClient.from("ai_logs").insert({
           feature: "company_lookup",
-          model: "claude-sonnet-4-5-20250929",
+          model: "claude-sonnet-4-20250514",
           input_tokens: 0,
           output_tokens: 0,
           latency_ms: Date.now() - startTime,
@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
     try {
       await publicClient.from("ai_logs").insert({
         feature: "company_lookup",
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-4-20250514",
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         latency_ms: latencyMs,

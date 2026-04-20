@@ -185,7 +185,7 @@ Generate match profiles for the top 6 members from this list. Return only the JS
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 6000,
         system: SYSTEM_PROMPT,
         tools: [
