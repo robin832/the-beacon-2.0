@@ -296,7 +296,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
         // wall-clock budget so URL verification and DB writes still have room.
         signal: AbortSignal.timeout(240_000),
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 8000,
           system: SYSTEM_PROMPT,
           tools: [
@@ -646,7 +646,7 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
         .from("ai_logs")
         .insert({
           feature: "innovation_analysis",
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           latency_ms: latencyMs,
