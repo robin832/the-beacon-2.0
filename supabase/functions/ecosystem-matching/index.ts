@@ -64,7 +64,43 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Pre-score members for relevance to narrow down to top candidates
+    // Pre-score members for relevance to narrow down to top candidates.
+    // Industry fit is the dominant signal — a generic IT member (lots of
+    // techs) should NEVER outrank a logistics specialist for a logistics
+    // prospect. We alias the canonical analysis labels to the member-side
+    // labels (members were tagged years before the canonical list existed)
+    // so "Logistics & Supply Chain" matches "Logistics / Forwarding Industry",
+    // "Port Industry", etc.
+    const INDUSTRY_ALIASES: Record<string, string[]> = {
+      "logistics & supply chain": ["logistics", "forwarding", "supply chain", "port", "transport"],
+      "maritime & port": ["maritime", "shipping", "port", "marine", "blue economy", "onshore", "offshore"],
+      "chemical & process industry": ["chemical", "oil & gas", "pharmaceutic", "process"],
+      "manufacturing & engineering": ["manufacturing", "engineering", "smart manufacturing"],
+      "energy & utilities": ["energy", "oil & gas", "utilities", "onshore", "offshore"],
+      "technology & software": ["technology", "software", "it services", "saas"],
+      "construction & infrastructure": ["construction", "infrastructure", "smart city"],
+      "healthcare & life sciences": ["healthcare", "life sciences", "pharmaceutic"],
+      "financial services": ["financial", "banking", "insurance", "fintech"],
+    };
+
+    const prospectVerticals: string[] = (analysis.confirmed_verticals as string[] | null)?.length
+      ? (analysis.confirmed_verticals as string[])
+      : analysis.industry ? [analysis.industry as string] : [];
+
+    // Expand each prospect vertical into its alias keywords
+    const prospectKeywords = new Set<string>();
+    for (const v of prospectVerticals) {
+      const key = v.toLowerCase();
+      prospectKeywords.add(key);
+      // direct word tokens
+      for (const tok of key.split(/[\s&/,-]+/).filter((t) => t.length >= 4)) {
+        prospectKeywords.add(tok);
+      }
+      // alias expansions
+      const aliases = INDUSTRY_ALIASES[key] || [];
+      for (const a of aliases) prospectKeywords.add(a);
+    }
+
     const techsDetected = (analysis.technologies_detected as Array<{ technology?: string } | string>) || [];
     const techNames = techsDetected.map((t) => typeof t === "string" ? t : t.technology || "").filter(Boolean);
     const gaps = (analysis.innovation_gaps as Array<{ opportunity?: string; gap?: string } | string>) || [];
@@ -75,16 +111,18 @@ Deno.serve(async (req) => {
       const memberVerticals = (member.industry_verticals as string[]) || [];
       const memberUseCases = (member.use_cases as string[]) || [];
 
+      // Industry overlap count: how many of the member's verticals contain any
+      // of the prospect's keywords (or vice versa). Higher = stronger fit.
+      const industryOverlap = memberVerticals.reduce((count, v) => {
+        const vl = v.toLowerCase();
+        const hit = Array.from(prospectKeywords).some((kw) => vl.includes(kw) || kw.includes(vl));
+        return count + (hit ? 1 : 0);
+      }, 0);
+
       // Technology overlap
       const techOverlap = memberTechs.filter((t: string) =>
         techNames.some((d) => d.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(d.toLowerCase()))
       ).length;
-
-      // Industry relevance
-      const industryMatch = memberVerticals.some((v: string) =>
-        analysis.industry?.toLowerCase().includes(v.toLowerCase().split(" ")[0]) ||
-        v.toLowerCase().includes(analysis.industry?.toLowerCase().split(" ")[0] || "")
-      ) ? 1 : 0;
 
       // Pain point / use case match
       const painPointTexts = painPoints.map((p) => typeof p === "string" ? p : p.pain_point || "");
@@ -92,9 +130,19 @@ Deno.serve(async (req) => {
         painPointTexts.some((p) => p.toLowerCase().includes(uc.toLowerCase().split(" ")[0]))
       ).length;
 
-      const score = (techOverlap * 0.35) + (industryMatch * 0.3) + (useCaseMatch * 0.2) + (member.description ? 0.15 : 0);
+      // Scoring: industry fit dominates (weight 4 per overlap + 6-point floor
+      // for any match), tech + use-case are secondary, description is a tiny
+      // tie-breaker. This pushes sector-relevant specialists to the top even
+      // when generic IT members have broader tech tags.
+      const industryBonus = industryOverlap > 0 ? 6 : 0;
+      const score =
+        industryBonus +
+        industryOverlap * 4 +
+        techOverlap * 1 +
+        useCaseMatch * 0.8 +
+        (member.description ? 0.3 : 0);
 
-      return { member, score };
+      return { member, score, industryOverlap };
     });
 
     // Sort and ensure the 3 visible tiers (Starter, Accelerator, Champion) are represented

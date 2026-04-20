@@ -175,15 +175,24 @@ Deno.serve(async (req) => {
       ];
     }
 
+    // Strip Claude web_search citation tags (e.g. <cite index="1-1,30-5">…</cite>)
+    // that leak into user-visible text fields. The opening tag carries no
+    // content we want to preserve, so we remove both open and close tags and
+    // keep the inner text.
+    const stripCitations = (s: unknown): unknown => {
+      if (typeof s !== "string") return s;
+      return s.replace(/<\/?cite(?:\s[^>]*)?>/g, "").trim();
+    };
+
     // Ensure all v2 fields are present on each candidate
     candidates = candidates.map((c: Record<string, unknown>) => ({
-      name: c.name || company_name,
+      name: stripCitations(c.name) || company_name,
       website: c.website || null,
-      headquarters: c.headquarters || null,
-      industry: c.industry || null,
-      description: c.description || null,
-      employee_range: c.employee_range || null,
-      founded: c.founded || null,
+      headquarters: stripCitations(c.headquarters) || null,
+      industry: stripCitations(c.industry) || null,
+      description: stripCitations(c.description) || null,
+      employee_range: stripCitations(c.employee_range) || null,
+      founded: stripCitations(c.founded) || null,
       confidence: c.confidence || 0.5,
       source: c.source || null,
     }));

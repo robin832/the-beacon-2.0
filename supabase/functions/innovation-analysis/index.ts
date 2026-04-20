@@ -415,6 +415,25 @@ Perform a complete innovation opportunity analysis for ${company_name}. Today's 
       .eq("id", analysis_id);
     await breadcrumb(`parsed outputLen=${outputText.length} searches=${webSearchCount}`);
 
+    // Strip Claude web_search citation tags (e.g. <cite index="1-1,30-5">…</cite>)
+    // that leak into text fields. We walk the whole analysisData tree since
+    // they can appear in any narrative field — evidence, beacon_relevance,
+    // opportunity descriptions, industry_landscape, etc.
+    const CITE_RE = /<\/?cite(?:\s[^>]*)?>/g;
+    const stripCitationsDeep = (v: unknown): unknown => {
+      if (typeof v === "string") return v.replace(CITE_RE, "");
+      if (Array.isArray(v)) return v.map(stripCitationsDeep);
+      if (v && typeof v === "object") {
+        const out: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+          out[k] = stripCitationsDeep(val);
+        }
+        return out;
+      }
+      return v;
+    };
+    analysisData = stripCitationsDeep(analysisData) as typeof analysisData;
+
     // Verify source URLs with a HEAD fetch so the frontend never renders broken
     // links. Each source gets a `verified: boolean` field. Runs in parallel
     // and caps at ~5s per URL, so the whole step typically adds <5s.
