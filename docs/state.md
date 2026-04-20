@@ -1,4 +1,4 @@
-# Platform State — 2026-04-20
+# Platform State — 2026-04-20 (matchmaking rev 2)
 
 Living snapshot of what's deployed and how it behaves. Update when you change something material.
 
@@ -35,18 +35,26 @@ For each active member with `membership_tier IS NOT NULL`:
 - **Use-case ↔ pain-point match:** 0.8 points each.
 - **Has description:** 0.3 point tie-breaker.
 
-### 2. Candidate pool (top 9)
-- 4 highest-scoring Tech Starters, 4 Accelerators, 4 Champions, 4 "other" (Private Office, etc.) merged, deduped, capped at 9 by score.
+### 2. Eligible tiers
+Only these `membership_tier` values participate — organizational relationships (Ecosystem/Founding/Public/Education Partner) are excluded from matchmaking:
+`Tech Starter`, `Tech Accelerator`, `Tech Champion`, `Private Office`, `Industry Engage`, `Industry Explore`.
 
-### 3. Claude ranks + writes rationales
+### 3. Candidate pool (top 9)
+Top 2 from each of Tech Starter / Tech Accelerator / Tech Champion / Private Office guaranteed, then best-overall fills the remaining slots up to 9. Deduped, re-sorted by score. This ensures Private Office specialists (Dockflow, LANARK, etc.) have a fair seat at the table.
+
+### 4. Claude ranks + writes rationales
 - Model sees prospect profile + top 9 candidates + real Beacon use case themes (from `knowledge_base`).
 - Emits JSON array with `why_this_match`, `match_evidence`, `member_expertise`, `conversation_starter`, `shared_sectors`, `teaser_text`.
 
-### 4. Visible slot selection (one per tier)
-- **Rank 1 visible:** top Tech Starter in Claude's ordering.
-- **Rank 2 visible:** top Tech Accelerator.
-- **Rank 3 visible:** top Tech Champion.
-- If a tier is missing, fill from next-best regardless of tier. Private Office members currently can only fill fallback slots — they don't get a dedicated visible slot.
+### 5. Visible slot selection (flexible tier diversity)
+Greedy pick 3 visible slots by Claude's ranking, enforcing **distinct tiers**:
+- Rank 1 visible = Claude's best overall.
+- Rank 2 visible = best whose tier ≠ rank 1's tier.
+- Rank 3 visible = best whose tier ≠ ranks 1 & 2's tiers.
+- Fallback to next-best if fewer than 3 distinct tiers exist in the candidate set.
+
+This guarantees up to 3 *different* tiers on screen without forcing a specific tier trio. A logistics prospect can see Private Office + Tech Starter + Tech Accelerator if that's the relevance ordering; a tech prospect can see Tech Champion + Tech Accelerator + Tech Starter.
+
 - **Rank 4–6 locked:** remaining 3 by Claude's ranking.
 
 **Rendering:**
@@ -123,6 +131,6 @@ Both `innovation-analysis` and `ecosystem-matching` pull from `knowledge_base` a
 ## Known limitations / open work
 
 - **Web search is sequential.** Claude runs each `web_search_20250305` call one at a time; 6 searches × ~10s avg ≈ 60s minimum. Not controllable from our side.
-- **Private Office members** never occupy a visible match slot — only locked. For sectors where Tech-tier coverage is thin, this may hide the most relevant member.
 - **`updated_at` has no trigger** on `innovation.analyses` — it stays equal to `created_at` because writes don't include it. Don't use row timestamps to infer run duration.
 - **Headlines in `industry-content.ts` are hand-curated placeholders.** TODO in the file mentions a planned n8n workflow to refresh weekly.
+- **Visible tier variety is opportunistic, not guaranteed.** If the candidate set only spans 2 tiers (e.g. all Tech Starters + one Private Office), only 2 distinct tiers appear visible and the third slot is next-best-overall.

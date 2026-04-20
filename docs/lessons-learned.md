@@ -4,6 +4,16 @@ Append-only log of decisions, mistakes, and non-obvious things worth remembering
 
 ---
 
+## 2026-04-20 — Rigid tier slots hide relevant matches; prefer flexible diversity
+
+**Context:** Original visible-slot rule was "one Tech Starter + one Tech Accelerator + one Tech Champion". This forces tier variety at the cost of relevance: Private Office members (Dockflow, LANARK — often the strongest logistics specialists) could only ever appear in locked slots even when they outranked every Tech-tier candidate.
+
+**Fix:** Replaced with flexible tier-diversity: rank 1 visible = best overall, rank 2 = best with different tier than rank 1, rank 3 = best with tier not in 1 or 2. Also filtered the eligible pool to only match-candidate tiers (Tech Starter/Accelerator/Champion, Private Office, Industry Engage/Explore) and removed Ecosystem/Founding/Public/Education partners — those are organizational relationships, not prospective 1-on-1 matches.
+
+**Lesson:** When a diversity rule and a relevance rule conflict, prefer "distinct values where available" (opportunistic) over "these specific values, always" (rigid). Rigid rules assume the population is uniform across all prospects; in practice some industries have thin Champion coverage, others have strong Private Office specialists, and you want the best match regardless of tier label.
+
+---
+
 ## 2026-04-20 — Pre-scoring industry relevance matters more than scoring formula
 
 **Symptom:** For Remant (a logistics company), the 3 visible ecosystem matches were NTT Belgium, Pronect, and De Cronos Groep — all generic IT service providers, none in logistics. User read this as "the 1-per-tier rule is broken."

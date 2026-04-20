@@ -50,11 +50,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get active Beacon members with pre-filtering
+    // Get active Beacon members. We only consider tiers that represent
+    // prospective matches for a prospect — organizational relationships
+    // (Ecosystem/Founding/Public/Education Partner) aren't match candidates.
+    const ELIGIBLE_TIERS = [
+      "Tech Starter",
+      "Tech Accelerator",
+      "Tech Champion",
+      "Private Office",
+      "Industry Engage",
+      "Industry Explore",
+    ];
     const { data: members } = await publicClient
       .from("accounts")
       .select("id, name, description, technologies, industry_verticals, use_cases, membership_tier, pain_points, collaboration_interests")
-      .not("membership_tier", "is", null)
+      .in("membership_tier", ELIGIBLE_TIERS)
       .is("archived_at", null);
 
     if (!members || members.length === 0) {
@@ -145,29 +155,36 @@ Deno.serve(async (req) => {
       return { member, score, industryOverlap };
     });
 
-    // Sort and ensure the 3 visible tiers (Starter, Accelerator, Champion) are represented
+    // Candidate pool for Claude: ensure each matchable tier is represented
+    // (so Claude has the option to rank a Private Office specialist above a
+    // generic Tech-tier member) while still capping at ~9 so Claude's
+    // attention budget isn't overloaded.
     scored.sort((a, b) => b.score - a.score);
     const getTier = (m: { membership_tier?: string | null }) =>
       (m.membership_tier as string | null) || "";
 
-    const topStarters = scored.filter((s) => getTier(s.member) === "Tech Starter").slice(0, 4);
-    const topAccelerators = scored.filter((s) => getTier(s.member) === "Tech Accelerator").slice(0, 4);
-    const topChampions = scored.filter((s) => getTier(s.member) === "Tech Champion").slice(0, 4);
-    const topOther = scored.filter((s) => {
-      const t = getTier(s.member);
-      return t !== "Tech Starter" && t !== "Tech Accelerator" && t !== "Tech Champion";
-    }).slice(0, 4);
+    const topStarters = scored.filter((s) => getTier(s.member) === "Tech Starter").slice(0, 2);
+    const topAccelerators = scored.filter((s) => getTier(s.member) === "Tech Accelerator").slice(0, 2);
+    const topChampions = scored.filter((s) => getTier(s.member) === "Tech Champion").slice(0, 2);
+    const topResidents = scored.filter((s) => getTier(s.member) === "Private Office").slice(0, 2);
 
-    // Merge, dedupe, and limit to 9 candidates for Claude to evaluate
+    // Merge guaranteed-per-tier + best overall (to fill remaining slots with
+    // whoever scores highest regardless of tier), dedupe, cap at 9.
     const seen = new Set<string>();
     const topCandidates: typeof scored = [];
-    for (const cand of [...topStarters, ...topAccelerators, ...topChampions, ...topOther].sort((a, b) => b.score - a.score)) {
-      if (!seen.has(cand.member.id as string)) {
-        seen.add(cand.member.id as string);
-        topCandidates.push(cand);
-        if (topCandidates.length >= 9) break;
+    const push = (c: typeof scored[number]) => {
+      if (!seen.has(c.member.id as string)) {
+        seen.add(c.member.id as string);
+        topCandidates.push(c);
       }
+    };
+    for (const c of [...topStarters, ...topAccelerators, ...topChampions, ...topResidents].sort((a, b) => b.score - a.score)) push(c);
+    for (const c of scored) {
+      if (topCandidates.length >= 9) break;
+      push(c);
     }
+    topCandidates.sort((a, b) => b.score - a.score);
+    topCandidates.length = Math.min(topCandidates.length, 9);
 
     // Format prospect data for the prompt
     const gapTexts = gaps.map((g) => typeof g === "string" ? g : (g as { opportunity?: string; gap?: string }).opportunity || (g as { gap?: string }).gap || "");
@@ -336,25 +353,22 @@ Generate match profiles for the top 6 members from this list. Return only the JS
       return { profile, member, tier };
     });
 
-    // Visible cards (rank 1-3): one Tech Starter, one Tech Accelerator, one Tech Champion
-    // Pick the highest-ranked (by Claude's ordering) from each tier
-    const pickFirstByTier = (tier: string) =>
-      profilesWithTier.find((p) => p.tier === tier);
-
-    const visibleStarter = pickFirstByTier("Tech Starter");
-    const visibleAccelerator = pickFirstByTier("Tech Accelerator");
-    const visibleChampion = pickFirstByTier("Tech Champion");
-
-    // Build visible list — preserve Claude's ranking order where possible
-    const visibleCandidates = [visibleStarter, visibleAccelerator, visibleChampion]
-      .filter((v): v is NonNullable<typeof v> => v !== undefined);
-
-    // Sort visible by their original Claude rank so the strongest shows first
-    visibleCandidates.sort(
-      (a, b) => profilesWithTier.indexOf(a) - profilesWithTier.indexOf(b)
-    );
-
-    // If we don't have one of each tier, fill remaining visible slots with next-best by Claude's ranking
+    // Visible cards (rank 1-3): flexible tier diversity.
+    // Rank 1 = Claude's best overall match. Rank 2 = best whose tier ≠ rank
+    // 1's tier. Rank 3 = best whose tier ≠ ranks 1 & 2. This guarantees up
+    // to 3 distinct tiers on screen without forcing which three they must
+    // be — so a logistics prospect with strong Private Office specialists
+    // (Dockflow, Lanark) can surface them over an irrelevant Tech Champion.
+    // Falls back to next-best if fewer than 3 unique tiers are available.
+    const visibleCandidates: typeof profilesWithTier = [];
+    const usedTiers = new Set<string>();
+    for (const p of profilesWithTier) {
+      const tierKey = p.tier || "__unknown__";
+      if (usedTiers.has(tierKey)) continue;
+      visibleCandidates.push(p);
+      usedTiers.add(tierKey);
+      if (visibleCandidates.length >= 3) break;
+    }
     const visibleIds = new Set(visibleCandidates.map((p) => p.profile.matched_account_id));
     while (visibleCandidates.length < 3) {
       const next = profilesWithTier.find((p) => !visibleIds.has(p.profile.matched_account_id));
